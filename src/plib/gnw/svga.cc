@@ -11,9 +11,24 @@
 #include <string.h>
 // File I/O debug: writes one-shot dump at svga_init time.
 // pspDebugScreen is NOT used — it conflicts with SDL2's sceGu setup.
+#endif
 
-// Manual INDEX8→RGB565 conversion.
-// PSP SDL2's SDL_BlitSurface silently fails on INDEX8→RGB565 blits
+namespace fallout {
+
+// Debug helper for PSP: appends a message to the debug file.
+// Only active on PSP builds.
+#ifdef __PSP__
+static void psp_debug_log(const char* msg) {
+    SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+        PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+    if (fd >= 0) {
+        sceIoWrite(fd, msg, strlen(msg));
+        sceIoClose(fd);
+    }
+}
+
+// Manual INDEX8->RGB565 conversion.
+// PSP SDL2's SDL_BlitSurface silently fails on INDEX8->RGB565 blits
 // to separately-allocated surfaces (returns 0 but writes nothing).
 static void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRect,
                                           SDL_Surface* dst, int dstX, int dstY) {
@@ -22,7 +37,7 @@ static void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRe
     SDL_Color* colors = src->format->palette->colors;
     int srcPitch = src->pitch;
     int dstPitch = dst->pitch;
-    int dstBpp = dst->format->BytesPerPixel;  // = 2 for RGB565
+    int dstBpp = dst->format->BytesPerPixel;
 
     int sx = srcRect ? srcRect->x : 0;
     int sy = srcRect ? srcRect->y : 0;
@@ -46,21 +61,6 @@ static void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRe
         }
         srcBase += srcPitch;
         dstBase += dstPitch;
-    }
-}
-#endif
-
-namespace fallout {
-
-// Debug helper for PSP: appends a message to the debug file.
-// Only active on PSP builds.
-#ifdef __PSP__
-static void psp_debug_log(const char* msg) {
-    SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
-        PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
-    if (fd >= 0) {
-        sceIoWrite(fd, msg, strlen(msg));
-        sceIoClose(fd);
     }
 }
 #else
@@ -104,15 +104,7 @@ void GNW95_SetPaletteEntries(unsigned char* palette, int start, int count)
         }
 
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, start, count);
-
-#ifdef __PSP__
-        // Full re-blit: convert INDEX8 frame to RGB565 intermediate using the
-        // newly-set palette. SDL_BlitSurface doesn't work for INDEX8→RGB565 on
-        // separately-allocated surfaces (PSP SDL2 bug), so we do it manually.
         psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
-#else
-        SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
-#endif
     }
 }
 
@@ -130,11 +122,7 @@ void GNW95_SetPalette(unsigned char* palette)
         }
 
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, 0, 256);
-#ifdef __PSP__
         psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
-#else
-        SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
-#endif
     }
 }
 
@@ -149,14 +137,7 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
     srcRect.w = srcWidth;
     srcRect.h = srcHeight;
 
-    SDL_Rect destRect;
-    destRect.x = destX;
-    destRect.y = destY;
-#ifdef __PSP__
     psp_convert_index8_to_rgb565(gSdlSurface, &srcRect, gSdlTextureSurface, destX, destY);
-#else
-    SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
-#endif
 }
 
 bool svga_init(VideoOptions* video_options)
@@ -463,28 +444,9 @@ void renderPresent()
 {
 #ifdef __PSP__
     // Step 1: Scale the 640x480 RGB565 intermediate surface down to
-    // the 480x272 RGB565 window surface.
-    int blitRet = SDL_BlitScaled(gSdlTextureSurface, NULL, gSdlWindowSurface, NULL);
-    if (blitRet != 0) {
-        // Log the error synchronously (before exit, so it's captured)
-        SceUID fd = sceIoOpen("ms0:/render_error.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
-        if (fd >= 0) {
-            char buf[256];
-            int n = snprintf(buf, sizeof(buf),
-                "renderPresent: SDL_BlitScaled returned %d\n"
-                "SDL_GetError: %s\n"
-                "src: %dx%d fmt=0x%x\n"
-                "dst: %dx%d fmt=0x%x\n",
-                blitRet,
-                SDL_GetError() ? SDL_GetError() : "(null)",
-                gSdlTextureSurface->w, gSdlTextureSurface->h,
-                (unsigned)gSdlTextureSurface->format->format,
-                gSdlWindowSurface->w, gSdlWindowSurface->h,
-                (unsigned)gSdlWindowSurface->format->format);
-            sceIoWrite(fd, buf, n);
-            sceIoClose(fd);
-        }
-    }
+    // the 480x272 RGB565 window surface (SDL_BlitScaled handles
+    // same-format scaling without needing palette conversion).
+    SDL_BlitScaled(gSdlTextureSurface, NULL, gSdlWindowSurface, NULL);
     // Step 2: Push the window surface to the display.
     SDL_UpdateWindowSurface(gSdlWindow);
 #else
