@@ -410,9 +410,28 @@ void renderPresent()
 {
 #ifdef __PSP__
     // Step 1: Scale the 640x480 RGB565 intermediate surface down to
-    // the 480x272 RGB565 window surface (SDL_BlitScaled handles
-    // same-format scaling without needing palette conversion).
-    SDL_BlitScaled(gSdlTextureSurface, NULL, gSdlWindowSurface, NULL);
+    // the 480x272 RGB565 window surface.
+    int blitRet = SDL_BlitScaled(gSdlTextureSurface, NULL, gSdlWindowSurface, NULL);
+    if (blitRet != 0) {
+        // Log the error synchronously (before exit, so it's captured)
+        SceUID fd = sceIoOpen("ms0:/render_error.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
+        if (fd >= 0) {
+            char buf[256];
+            int n = snprintf(buf, sizeof(buf),
+                "renderPresent: SDL_BlitScaled returned %d\n"
+                "SDL_GetError: %s\n"
+                "src: %dx%d fmt=0x%x\n"
+                "dst: %dx%d fmt=0x%x\n",
+                blitRet,
+                SDL_GetError() ? SDL_GetError() : "(null)",
+                gSdlTextureSurface->w, gSdlTextureSurface->h,
+                (unsigned)gSdlTextureSurface->format->format,
+                gSdlWindowSurface->w, gSdlWindowSurface->h,
+                (unsigned)gSdlWindowSurface->format->format);
+            sceIoWrite(fd, buf, n);
+            sceIoClose(fd);
+        }
+    }
     // Step 2: Push the window surface to the display.
     SDL_UpdateWindowSurface(gSdlWindow);
 #else
