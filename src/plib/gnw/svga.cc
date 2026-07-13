@@ -30,11 +30,39 @@ static void psp_debug_log(const char* msg) {
 // Manual INDEX8->RGB565 conversion.
 // PSP SDL2's SDL_BlitSurface silently fails on INDEX8->RGB565 blits
 // to separately-allocated surfaces (returns 0 but writes nothing).
-static void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRect,
+void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRect,
                                           SDL_Surface* dst, int dstX, int dstY) {
     if (!src || !dst || !src->format->palette) return;
 
     SDL_Color* colors = src->format->palette->colors;
+
+    // One-shot color channel diagnostic (Step 2)
+    {
+        static int color_diag_done = 0;
+        if (!color_diag_done) {
+            color_diag_done = 1;
+            // Pick a non-zero palette entry for known-color comparison
+            int testIdx = 127;
+            Uint16 pixel = ((colors[testIdx].r >> 3) << 11) |
+                           ((colors[testIdx].g >> 2) << 5) |
+                           (colors[testIdx].b >> 3);
+            char buf[512];
+            int n = snprintf(buf, sizeof(buf),
+                "COLOR_DIAG: pal[%d] R=%d G=%d B=%d (shifted R>>3=%d G>>2=%d B>>3=%d) "
+                "pixel=0x%04x  packing=(r>>3)<<11|(g>>2)<<5|(b>>3)\n",
+                testIdx,
+                colors[testIdx].r, colors[testIdx].g, colors[testIdx].b,
+                colors[testIdx].r >> 3, colors[testIdx].g >> 2, colors[testIdx].b >> 3,
+                pixel);
+            SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+                PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) {
+                sceIoWrite(fd, buf, strlen(buf));
+                sceIoClose(fd);
+            }
+        }
+    }
+
     int srcPitch = src->pitch;
     int dstPitch = dst->pitch;
     int dstBpp = dst->format->BytesPerPixel;
@@ -443,6 +471,29 @@ void handleWindowSizeChanged()
 void renderPresent()
 {
 #ifdef __PSP__
+    // Frame timing diagnostic (Step 3) — log every ~60 frames
+    {
+        static unsigned int frameCount = 0;
+        static unsigned int lastLogTime = 0;
+        frameCount++;
+        unsigned int now = SDL_GetTicks();
+        if (frameCount == 1 || now - lastLogTime >= 1000) {
+            char buf[256];
+            int n = snprintf(buf, sizeof(buf),
+                "FRAME_PROFILE: frame=%u elapsed=%ums fps=%.1f\n",
+                frameCount, now - lastLogTime,
+                frameCount > 1 ? 1000.0f * (frameCount - 1) / (now - lastLogTime) : 0.0f);
+            SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+                PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) {
+                sceIoWrite(fd, buf, strlen(buf));
+                sceIoClose(fd);
+            }
+            lastLogTime = now;
+            frameCount = 1;
+        }
+    }
+
     // Step 1: Scale the 640x480 RGB565 intermediate surface down to
     // the 480x272 RGB565 window surface (SDL_BlitScaled handles
     // same-format scaling without needing palette conversion).

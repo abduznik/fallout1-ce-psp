@@ -19,6 +19,11 @@ extern SDL_Texture* gSdlTexture;
 extern SDL_Surface* gSdlTextureSurface;
 extern FpsLimiter sharedFpsLimiter;
 
+#ifdef __PSP__
+void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRect,
+                                   SDL_Surface* dst, int dstX, int dstY);
+#endif
+
 void GNW95_SetPaletteEntries(unsigned char* a1, int a2, int a3);
 void GNW95_SetPalette(unsigned char* palette);
 void GNW95_ShowRect(unsigned char* src, unsigned int src_pitch, unsigned int a3, unsigned int src_x, unsigned int src_y, unsigned int src_width, unsigned int src_height, unsigned int dest_x, unsigned int dest_y);

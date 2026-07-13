@@ -41,6 +41,10 @@
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
 
+#ifdef __PSP__
+#include <pspiofilemgr.h>
+#endif
+
 namespace fallout {
 
 #define GAME_DIALOG_WINDOW_WIDTH 640
@@ -3473,6 +3477,24 @@ static void talk_to_display_frame(Art* headFrm, int frame)
 {
     // 0x50522C
     static int totalHotx = 0;
+
+#ifdef __PSP__
+    // One-shot diagnostic: confirm this function runs during portrait rendering
+    {
+        static int portrait_diag_done = 0;
+        if (!portrait_diag_done && headFrm != NULL) {
+            portrait_diag_done = 1;
+            char buf[256];
+            int n = snprintf(buf, sizeof(buf),
+                "PORTRAIT_DIAG: talk_to_display_frame called headFrm=%p frame=%d "
+                "headWindowBuffer offset=%d win=%d\n",
+                (void*)headFrm, frame, (int)(headWindowBuffer ? 1 : 0), dialogueWindow);
+            SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+                PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) { sceIoWrite(fd, buf, strlen(buf)); sceIoClose(fd); }
+        }
+    }
+#endif
 
     if (dialogueWindow == -1) {
         return;
