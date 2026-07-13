@@ -82,6 +82,9 @@ void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRect,
     Uint8* srcBase = (Uint8*)src->pixels + sy * srcPitch + sx;
     Uint8* dstBase = (Uint8*)dst->pixels + dstY * dstPitch + dstX * dstBpp;
 
+    // Mark write START for torn-read detection
+    gSdlTextureVersion++;
+
     for (int y = 0; y < sh; y++) {
         for (int x = 0; x < sw; x++) {
             Uint8 index = srcBase[x];
@@ -93,6 +96,9 @@ void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRect,
         srcBase += srcPitch;
         dstBase += dstPitch;
     }
+
+    // Mark write END for torn-read detection
+    gSdlTextureVersion++;
 }
 #else
 #define psp_debug_log(msg) ((void)0)
@@ -114,6 +120,11 @@ SDL_Texture* gSdlTexture = NULL;
 SDL_Surface* gSdlTextureSurface = NULL;
 #ifdef __PSP__
 SDL_Surface* gSdlWindowSurface = NULL;
+
+// Frame-version counter for gSdlTextureSurface torn-read detection.
+// Incremented at the start of each write, incremented again at the end.
+// An odd read-version means a write was in progress when we read.
+static volatile int gSdlTextureVersion = 0;
 
 // Manual nearest-neighbor RGB565→RGB565 scaler with fixed-point accumulator.
 // Replaces SDL_BlitScaled on PSP because SDL_BlitScaled's rounding behavior is
@@ -587,14 +598,20 @@ void renderPresent()
     {
         static unsigned int frameCount = 0;
         static unsigned int lastLogTime = 0;
+        static int lastSdlTextureVer = 0;
         frameCount++;
         unsigned int now = SDL_GetTicks();
+        int currentTexVer = gSdlTextureVersion;
+        int writesSinceLastPresent = currentTexVer - lastSdlTextureVer;
+        int writeInProgress = (currentTexVer & 1);  // odd = write started but not ended
         if (frameCount == 1 || now - lastLogTime >= 1000) {
-            char buf[256];
+            char buf[512];
             int n = snprintf(buf, sizeof(buf),
-                "FRAME_PROFILE: frame=%u elapsed=%ums fps=%.1f\n",
+                "FRAME_PROFILE: frame=%u elapsed=%ums fps=%.1f "
+                "texVer=%d writesSinceLast=%d writeInProg=%d\n",
                 frameCount, now - lastLogTime,
-                frameCount > 1 ? 1000.0f * (frameCount - 1) / (now - lastLogTime) : 0.0f);
+                frameCount > 1 ? 1000.0f * (frameCount - 1) / (now - lastLogTime) : 0.0f,
+                currentTexVer, writesSinceLastPresent, writeInProgress);
             SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
                 PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
             if (fd >= 0) {
@@ -602,6 +619,7 @@ void renderPresent()
                 sceIoClose(fd);
             }
             lastLogTime = now;
+            lastSdlTextureVer = currentTexVer;
             frameCount = 1;
         }
     }
