@@ -78,8 +78,13 @@ bool dxinput_get_mouse_state(MouseData* mouseState)
     SDL_PumpEvents();
 
 #ifdef __PSP__
-    mouseState->buttons[0] = SDL_GameControllerGetButton(gameController, SDL_CONTROLLER_BUTTON_A);
-    mouseState->buttons[1] = SDL_GameControllerGetButton(gameController, SDL_CONTROLLER_BUTTON_B);
+    if (gameController != nullptr) {
+        mouseState->buttons[0] = SDL_GameControllerGetButton(gameController, SDL_CONTROLLER_BUTTON_A);
+        mouseState->buttons[1] = SDL_GameControllerGetButton(gameController, SDL_CONTROLLER_BUTTON_B);
+    } else {
+        mouseState->buttons[0] = 0;
+        mouseState->buttons[1] = 0;
+    }
     mouseState->x = 0;
     mouseState->y = 0;
 #else

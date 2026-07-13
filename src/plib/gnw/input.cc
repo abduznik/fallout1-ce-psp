@@ -45,8 +45,8 @@ enum
 int16_t controllerLeftXAxis = 0;
 int16_t controllerLeftYAxis = 0;
 uint32_t lastControllerTime = 0;
-int32_t mapXScroll = 0;
-int32_t mapYScroll = 0;
+int32_t mapXScroll = 0;       // TODO(psp-controls): unused until map-scroll button layout decision; PSP has no second stick unlike Vita
+int32_t mapYScroll = 0;       // TODO(psp-controls): unused until map-scroll button layout decision
 float cursorSpeedup = 1.0f;
 float resolutionSpeedMod = 1.0f;
 float controllerLeftoverX = 0;
@@ -1324,6 +1324,10 @@ void closeController()
 
 void processControllerAxisMotion()
 {
+    if (gameController == nullptr) {
+        return;
+    }
+
     const uint32_t currentTime = SDL_GetTicks();
     const uint32_t deltaTime = currentTime - lastControllerTime;
     lastControllerTime = currentTime;

@@ -18,7 +18,6 @@
 
 #ifdef __PSP__
 #include <pspctrl.h>
-#include <pspkernel.h>
 #endif
 
 namespace fallout {
