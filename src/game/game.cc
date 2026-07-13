@@ -144,13 +144,8 @@ int game_init(const char* windowTitle, bool isMapper, int font, int flags, int a
     win_set_minimized_title(windowTitle);
 
     VideoOptions video_options;
-#ifdef __PSP__
-    video_options.width = 480;
-    video_options.height = 272;
-#else
     video_options.width = 640;
     video_options.height = 480;
-#endif
     video_options.fullscreen = true;
     video_options.scale = 1;
 
@@ -159,31 +154,18 @@ int game_init(const char* windowTitle, bool isMapper, int font, int flags, int a
         if (config_load(&resolutionConfig, "f1_res.ini", false)) {
             int screenWidth;
             if (config_get_value(&resolutionConfig, "MAIN", "SCR_WIDTH", &screenWidth)) {
-#ifdef __PSP__
-                video_options.width = std::max(screenWidth, 480);
-#else
                 video_options.width = std::max(screenWidth, 640);
-#endif
             }
 
             int screenHeight;
             if (config_get_value(&resolutionConfig, "MAIN", "SCR_HEIGHT", &screenHeight)) {
-#ifdef __PSP__
-                video_options.height = std::max(screenHeight, 272);
-#else
                 video_options.height = std::max(screenHeight, 480);
-#endif
             }
 
             bool windowed;
             if (configGetBool(&resolutionConfig, "MAIN", "WINDOWED", &windowed)) {
                 video_options.fullscreen = !windowed;
             }
-#ifdef __PSP__
-            else {
-                video_options.fullscreen = true;
-            }
-#endif
 
             int scaleValue;
             if (config_get_value(&resolutionConfig, "MAIN", "SCALE_2X", &scaleValue)) {
