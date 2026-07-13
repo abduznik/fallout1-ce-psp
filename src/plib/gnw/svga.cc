@@ -26,6 +26,43 @@ static void psp_debug_log(const char* msg) {
         sceIoClose(fd);
     }
 }
+
+// Manual INDEX8->RGB565 conversion.
+// PSP SDL2's SDL_BlitSurface silently fails on INDEX8->RGB565 blits
+// to separately-allocated surfaces (returns 0 but writes nothing).
+static void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRect,
+                                          SDL_Surface* dst, int dstX, int dstY) {
+    if (!src || !dst || !src->format->palette) return;
+
+    SDL_Color* colors = src->format->palette->colors;
+    int srcPitch = src->pitch;
+    int dstPitch = dst->pitch;
+    int dstBpp = dst->format->BytesPerPixel;
+
+    int sx = srcRect ? srcRect->x : 0;
+    int sy = srcRect ? srcRect->y : 0;
+    int sw = srcRect ? srcRect->w : src->w;
+    int sh = srcRect ? srcRect->h : src->h;
+
+    if (sx + sw > src->w) sw = src->w - sx;
+    if (sy + sh > src->h) sh = src->h - sy;
+    if (sw <= 0 || sh <= 0) return;
+
+    Uint8* srcBase = (Uint8*)src->pixels + sy * srcPitch + sx;
+    Uint8* dstBase = (Uint8*)dst->pixels + dstY * dstPitch + dstX * dstBpp;
+
+    for (int y = 0; y < sh; y++) {
+        for (int x = 0; x < sw; x++) {
+            Uint8 index = srcBase[x];
+            Uint16 pixel = ((colors[index].r >> 3) << 11) |
+                           ((colors[index].g >> 2) << 5) |
+                           (colors[index].b >> 3);
+            ((Uint16*)dstBase)[x] = pixel;
+        }
+        srcBase += srcPitch;
+        dstBase += dstPitch;
+    }
+}
 #else
 #define psp_debug_log(msg) ((void)0)
 #endif
@@ -67,7 +104,7 @@ void GNW95_SetPaletteEntries(unsigned char* palette, int start, int count)
         }
 
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, start, count);
-        SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+        psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
     }
 }
 
@@ -85,7 +122,7 @@ void GNW95_SetPalette(unsigned char* palette)
         }
 
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, 0, 256);
-        SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+        psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
     }
 }
 
@@ -100,10 +137,7 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
     srcRect.w = srcWidth;
     srcRect.h = srcHeight;
 
-    SDL_Rect destRect;
-    destRect.x = destX;
-    destRect.y = destY;
-    SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
+    psp_convert_index8_to_rgb565(gSdlSurface, &srcRect, gSdlTextureSurface, destX, destY);
 }
 
 bool svga_init(VideoOptions* video_options)
