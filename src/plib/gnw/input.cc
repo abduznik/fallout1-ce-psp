@@ -26,6 +26,13 @@
 
 extern SDL_GameController* gameController;
 
+// Forward declarations for PSP controller functions
+void openController();
+void closeController();
+void processControllerAxisMotion();
+void handleControllerAxisEvent(const SDL_ControllerAxisEvent& motion);
+void handleControllerButtonEvent(const SDL_ControllerButtonEvent& button);
+
 enum
 {
     CONTROLLER_DEADZONE = 3000,
