@@ -320,6 +320,18 @@ static void movie_MVE_ShowFrame(SDL_Surface* surface, int srcWidth, int srcHeigh
 
     SDL_SetSurfacePalette(surface, gSdlSurface->format->palette);
 #ifdef __PSP__
+    // Log movie frame rect for diagnostic tracing
+    {
+        char buf[256];
+        int n = snprintf(buf, sizeof(buf),
+            "MOVIEFRAME: src=(%d,%d %dx%d) dest=(%d,%d) surf_pitch=%d gsurf_pitch=%d\n",
+            srcRect.x, srcRect.y, srcRect.w, srcRect.h,
+            destRect.x, destRect.y,
+            surface->pitch, gSdlSurface->pitch);
+        SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+            PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+        if (fd >= 0) { sceIoWrite(fd, buf, strlen(buf)); sceIoClose(fd); }
+    }
     // Manual INDEX8 row-copy to bypass PSP SDL2's closed-source SDL_BlitSurface
     // (suspected of producing corrupted output during MVE movie playback).
     // Both surfaces are INDEX8 (1 byte/pixel); memcpy-per-row avoids any

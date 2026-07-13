@@ -293,6 +293,24 @@ void GNW95_SetPalette(unsigned char* palette)
 // 0x4CB850
 void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, unsigned int srcX, unsigned int srcY, unsigned int srcWidth, unsigned int srcHeight, unsigned int destX, unsigned int destY)
 {
+#ifdef __PSP__
+    // Throttled rect-coordinate logger: log every 10th call in a burst of 1,
+    // or every call if dimensions are suspicious (wider than 320 or mirrored).
+    {
+        static unsigned int showRectCounter = 0;
+        showRectCounter++;
+        if (showRectCounter % 10 == 1) {
+            char buf[256];
+            int n = snprintf(buf, sizeof(buf),
+                "SHOWRECT: movie=%d src=(%u,%u %ux%u) dest=(%u,%u) dims=%ux%u pitch=%d\n",
+                gIsMoviePlaying, srcX, srcY, srcWidth, srcHeight, destX, destY,
+                srcWidth, srcHeight, srcPitch);
+            SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+                PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) { sceIoWrite(fd, buf, strlen(buf)); sceIoClose(fd); }
+        }
+    }
+#endif
     buf_to_buf(src + srcPitch * srcY + srcX, srcWidth, srcHeight, srcPitch, (unsigned char*)gSdlSurface->pixels + gSdlSurface->pitch * destY + destX, gSdlSurface->pitch);
 
     SDL_Rect srcRect;
