@@ -231,113 +231,100 @@ void renderPresent()
     static bool dumpDone = false;
     if (!dumpDone) {
         dumpDone = true;
-#ifdef __PSP__
-        // Write to memory stick file (PSP filesystem)
-        FILE* f = fopen("ms0:/PSP/GAME/FOUT00001/debug.txt", "w");
-#else
-        FILE* f = fopen("debug.txt", "w");
-#endif
-        if (f == NULL) {
-            // Fallback: write to stderr (PPSSPP captures this in log)
-            f = stderr;
-            fprintf(f, "=== DEBUG DUMP (stderr fallback) ===\n");
+        printf("=== DEBUG DUMP (first frame) ===\n");
+        // Dump first 16 palette entries
+        printf("=== PALETTE (first 16 of 256) ===\n");
+        if (gSdlSurface != NULL && gSdlSurface->format->palette != NULL) {
+            SDL_Palette* pal = gSdlSurface->format->palette;
+            for (int i = 0; i < 16 && i < (int)pal->ncolors; i++) {
+                printf("  [%3d] R=%3d G=%3d B=%3d A=%3d\n",
+                        i, pal->colors[i].r, pal->colors[i].g,
+                        pal->colors[i].b, pal->colors[i].a);
+            }
+        } else {
+            printf("  gSdlSurface or palette is NULL!\n");
         }
-        if (f) {
-            // Dump first 16 palette entries
-            fprintf(f, "=== PALETTE (first 16 of 256) ===\n");
-            if (gSdlSurface != NULL && gSdlSurface->format->palette != NULL) {
-                SDL_Palette* pal = gSdlSurface->format->palette;
-                for (int i = 0; i < 16 && i < (int)pal->ncolors; i++) {
-                    fprintf(f, "  [%3d] R=%3d G=%3d B=%3d A=%3d\n",
-                            i, pal->colors[i].r, pal->colors[i].g,
-                            pal->colors[i].b, pal->colors[i].a);
+
+        // Dump raw pixel indices from gSdlSurface at various positions
+        printf("\n=== gSdlSurface 8-bit pixel indices ===\n");
+        if (gSdlSurface != NULL && gSdlSurface->pixels != NULL) {
+            int w = gSdlSurface->w;
+            int h = gSdlSurface->h;
+            printf("  surface: %dx%d, pitch=%d, bpp=%d\n",
+                    w, h, gSdlSurface->pitch, gSdlSurface->format->BitsPerPixel);
+            // Sample a grid of pixels
+            int positions[][2] = {
+                {0,0}, {w/4,0}, {w/2,0}, {3*w/4,0},
+                {0,h/4}, {w/4,h/4}, {w/2,h/4}, {3*w/4,h/4},
+                {0,h/2}, {w/4,h/2}, {w/2,h/2}, {3*w/4,h/2},
+                {0,3*h/4}, {w/4,3*h/4}, {w/2,3*h/4}, {3*w/4,3*h/4},
+            };
+            Uint8* pixels8 = (Uint8*)gSdlSurface->pixels;
+            for (int i = 0; i < 16; i++) {
+                int x = positions[i][0];
+                int y = positions[i][1];
+                Uint8 idx = pixels8[y * gSdlSurface->pitch + x];
+                printf("  pixel[%4d,%4d] = index %3d", x, y, idx);
+                if (gSdlSurface->format->palette != NULL && idx < gSdlSurface->format->palette->ncolors) {
+                    printf("  -> RGB(%3d,%3d,%3d)\n",
+                            gSdlSurface->format->palette->colors[idx].r,
+                            gSdlSurface->format->palette->colors[idx].g,
+                            gSdlSurface->format->palette->colors[idx].b);
+                } else {
+                    printf("\n");
                 }
-            } else {
-                fprintf(f, "  gSdlSurface or palette is NULL!\n");
             }
 
-            // Dump raw pixel indices from gSdlSurface at various positions
-            fprintf(f, "\n=== gSdlSurface 8-bit pixel indices ===\n");
-            if (gSdlSurface != NULL && gSdlSurface->pixels != NULL) {
-                int w = gSdlSurface->w;
-                int h = gSdlSurface->h;
-                fprintf(f, "  surface: %dx%d, pitch=%d, bpp=%d\n",
-                        w, h, gSdlSurface->pitch, gSdlSurface->format->BitsPerPixel);
-                // Sample a grid of pixels
-                int positions[][2] = {
-                    {0,0}, {w/4,0}, {w/2,0}, {3*w/4,0},
-                    {0,h/4}, {w/4,h/4}, {w/2,h/4}, {3*w/4,h/4},
-                    {0,h/2}, {w/4,h/2}, {w/2,h/2}, {3*w/4,h/2},
-                    {0,3*h/4}, {w/4,3*h/4}, {w/2,3*h/4}, {3*w/4,3*h/4},
-                };
-                Uint8* pixels8 = (Uint8*)gSdlSurface->pixels;
-                for (int i = 0; i < 16; i++) {
-                    int x = positions[i][0];
-                    int y = positions[i][1];
-                    Uint8 idx = pixels8[y * gSdlSurface->pitch + x];
-                    fprintf(f, "  pixel[%4d,%4d] = index %3d", x, y, idx);
-                    if (gSdlSurface->format->palette != NULL && idx < gSdlSurface->format->palette->ncolors) {
-                        fprintf(f, "  -> RGB(%3d,%3d,%3d)\n",
-                                gSdlSurface->format->palette->colors[idx].r,
-                                gSdlSurface->format->palette->colors[idx].g,
-                                gSdlSurface->format->palette->colors[idx].b);
-                    } else {
-                        fprintf(f, "\n");
+            // Also dump a small region around center
+            printf("\n  Center 8x8 pixel block at (%d,%d):\n", w/2-4, h/2-4);
+            for (int dy = 0; dy < 8; dy++) {
+                printf("    ");
+                for (int dx = 0; dx < 8; dx++) {
+                    int px = w/2 - 4 + dx;
+                    int py = h/2 - 4 + dy;
+                    if (px >= 0 && px < w && py >= 0 && py < h) {
+                        printf(" %3d", pixels8[py * gSdlSurface->pitch + px]);
                     }
                 }
-
-                // Also dump a small region around center
-                fprintf(f, "\n  Center 8x8 pixel block at (%d,%d):\n", w/2-4, h/2-4);
-                for (int dy = 0; dy < 8; dy++) {
-                    fprintf(f, "    ");
-                    for (int dx = 0; dx < 8; dx++) {
-                        int px = w/2 - 4 + dx;
-                        int py = h/2 - 4 + dy;
-                        if (px >= 0 && px < w && py >= 0 && py < h) {
-                            fprintf(f, " %3d", pixels8[py * gSdlSurface->pitch + px]);
-                        }
-                    }
-                    fprintf(f, "\n");
-                }
-            } else {
-                fprintf(f, "  gSdlSurface or pixels is NULL!\n");
+                printf("\n");
             }
-
-            // Dump gSdlTextureSurface (RGB888) sample
-            fprintf(f, "\n=== gSdlTextureSurface RGB888 pixels ===\n");
-            if (gSdlTextureSurface != NULL && gSdlTextureSurface->pixels != NULL) {
-                int tw = gSdlTextureSurface->w;
-                int th = gSdlTextureSurface->h;
-                fprintf(f, "  texture surface: %dx%d, pitch=%d, bpp=%d\n",
-                        tw, th, gSdlTextureSurface->pitch, gSdlTextureSurface->format->BitsPerPixel);
-                Uint8* rgb = (Uint8*)gSdlTextureSurface->pixels;
-                // Sample same grid positions
-                int positions[][2] = {
-                    {0,0}, {tw/4,0}, {tw/2,0}, {3*tw/4,0},
-                    {0,th/4}, {tw/4,th/4}, {tw/2,th/4}, {3*tw/4,th/4},
-                    {0,th/2}, {tw/4,th/2}, {tw/2,th/2}, {3*tw/4,th/2},
-                    {0,3*th/4}, {tw/4,3*th/4}, {tw/2,3*th/4}, {3*tw/4,3*th/4},
-                };
-                int bpp = gSdlTextureSurface->format->BytesPerPixel;
-                for (int i = 0; i < 16; i++) {
-                    int x = positions[i][0];
-                    int y = positions[i][1];
-                    Uint8* pixel = &rgb[y * gSdlTextureSurface->pitch + x * bpp];
-                    if (bpp == 3) {
-                        fprintf(f, "  pixel[%4d,%4d] = RGB(%3d,%3d,%3d)\n", x, y, pixel[0], pixel[1], pixel[2]);
-                    } else if (bpp == 4) {
-                        fprintf(f, "  pixel[%4d,%4d] = RGBA(%3d,%3d,%3d,%3d)\n", x, y, pixel[0], pixel[1], pixel[2], pixel[3]);
-                    } else if (bpp == 2) {
-                        Uint16 val = *(Uint16*)pixel;
-                        fprintf(f, "  pixel[%4d,%4d] = 0x%04x\n", x, y, val);
-                    }
-                }
-            } else {
-                fprintf(f, "  gSdlTextureSurface or pixels is NULL!\n");
-            }
-
-            fclose(f);
+        } else {
+            printf("  gSdlSurface or pixels is NULL!\n");
         }
+
+        // Dump gSdlTextureSurface (RGB888) sample
+        printf("\n=== gSdlTextureSurface RGB888 pixels ===\n");
+        if (gSdlTextureSurface != NULL && gSdlTextureSurface->pixels != NULL) {
+            int tw = gSdlTextureSurface->w;
+            int th = gSdlTextureSurface->h;
+            printf("  texture surface: %dx%d, pitch=%d, bpp=%d\n",
+                    tw, th, gSdlTextureSurface->pitch, gSdlTextureSurface->format->BitsPerPixel);
+            Uint8* rgb = (Uint8*)gSdlTextureSurface->pixels;
+            // Sample same grid positions
+            int positions[][2] = {
+                {0,0}, {tw/4,0}, {tw/2,0}, {3*tw/4,0},
+                {0,th/4}, {tw/4,th/4}, {tw/2,th/4}, {3*tw/4,th/4},
+                {0,th/2}, {tw/4,th/2}, {tw/2,th/2}, {3*tw/4,th/2},
+                {0,3*th/4}, {tw/4,3*th/4}, {tw/2,3*th/4}, {3*tw/4,3*th/4},
+            };
+            int bpp = gSdlTextureSurface->format->BytesPerPixel;
+            for (int i = 0; i < 16; i++) {
+                int x = positions[i][0];
+                int y = positions[i][1];
+                Uint8* pixel = &rgb[y * gSdlTextureSurface->pitch + x * bpp];
+                if (bpp == 3) {
+                    printf("  pixel[%4d,%4d] = RGB(%3d,%3d,%3d)\n", x, y, pixel[0], pixel[1], pixel[2]);
+                } else if (bpp == 4) {
+                    printf("  pixel[%4d,%4d] = RGBA(%3d,%3d,%3d,%3d)\n", x, y, pixel[0], pixel[1], pixel[2], pixel[3]);
+                } else if (bpp == 2) {
+                    Uint16 val = *(Uint16*)pixel;
+                    printf("  pixel[%4d,%4d] = 0x%04x\n", x, y, val);
+                }
+            }
+        } else {
+            printf("  gSdlTextureSurface or pixels is NULL!\n");
+        }
+        printf("=== DEBUG DUMP END ===\n");
     }
 
     SDL_UpdateTexture(gSdlTexture, NULL, gSdlTextureSurface->pixels, gSdlTextureSurface->pitch);
