@@ -32,6 +32,11 @@ static void psp_debug_log(const char* msg) {
 // An odd read-version means a write was in progress when we read.
 static volatile int gSdlTextureVersion = 0;
 
+// Flag: when true, palette-change callbacks skip the full-surface INDEX8→RGB565
+// conversion to avoid converting stale pixel data with a new palette. Set by
+// movieStart, cleared by cleanupMovie. MVE movies change palette 2-3× per frame.
+bool gIsMoviePlaying = false;
+
 // Manual INDEX8->RGB565 conversion.
 // PSP SDL2's SDL_BlitSurface silently fails on INDEX8->RGB565 blits
 // to separately-allocated surfaces (returns 0 but writes nothing).
@@ -255,7 +260,9 @@ void GNW95_SetPaletteEntries(unsigned char* palette, int start, int count)
         }
 
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, start, count);
-        psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
+        if (!gIsMoviePlaying) {
+            psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
+        }
     }
 }
 
@@ -273,7 +280,9 @@ void GNW95_SetPalette(unsigned char* palette)
         }
 
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, 0, 256);
-        psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
+        if (!gIsMoviePlaying) {
+            psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
+        }
     }
 }
 

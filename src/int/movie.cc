@@ -564,6 +564,9 @@ static void cleanupMovie(int a1)
         subtitleList = next;
     }
 
+#ifdef __PSP__
+    gIsMoviePlaying = false;
+#endif
     running = 0;
     movieSubRectFlag = 0;
     movieScaleFlag = 0;
@@ -833,6 +836,9 @@ static int movieStart(int win, char* filePath, int (*a3)())
 
     GNWWin = win;
     running = 1;
+#ifdef __PSP__
+    gIsMoviePlaying = true;
+#endif
     movieFlags &= ~MOVIE_EXTENDED_FLAG_0x01;
 
     if ((movieFlags & MOVIE_EXTENDED_FLAG_0x10) != 0) {
