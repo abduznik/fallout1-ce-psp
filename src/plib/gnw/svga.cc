@@ -67,7 +67,43 @@ void GNW95_SetPaletteEntries(unsigned char* palette, int start, int count)
         }
 
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, start, count);
-        SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+
+#ifdef __PSP__
+        {
+            SceUID fd = sceIoOpen("ms0:/palette_log.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) {
+                char buf[1024];
+                int n = snprintf(buf, sizeof(buf),
+                    "GNW95_SetPaletteEntries start=%d count=%d\n"
+                    "  gSdlSurface: w=%d h=%d pitch=%d fmt=0x%x pal=%p\n"
+                    "  gSdlTextureSurface: w=%d h=%d pitch=%d fmt=0x%x\n"
+                    "  colors[0]: r=%d g=%d b=%d  colors[127]: r=%d g=%d b=%d\n",
+                    start, count,
+                    gSdlSurface->w, gSdlSurface->h, gSdlSurface->pitch, gSdlSurface->format->format, (void*)gSdlSurface->format->palette,
+                    gSdlTextureSurface->w, gSdlTextureSurface->h, gSdlTextureSurface->pitch, gSdlTextureSurface->format->format,
+                    colors[0].r, colors[0].g, colors[0].b,
+                    count > 127 ? colors[127].r : -1, count > 127 ? colors[127].g : -1, count > 127 ? colors[127].b : -1);
+                sceIoWrite(fd, buf, n);
+                sceIoClose(fd);
+            }
+        }
+#endif
+
+        int blitRet = SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+
+#ifdef __PSP__
+        {
+            SceUID fd = sceIoOpen("ms0:/palette_log.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) {
+                char buf[512];
+                int n = snprintf(buf, sizeof(buf),
+                    "  fullBlit ret=%d err=\"%s\"\n",
+                    blitRet, SDL_GetError() ? SDL_GetError() : "(null)");
+                sceIoWrite(fd, buf, n);
+                sceIoClose(fd);
+            }
+        }
+#endif
     }
 }
 
@@ -103,7 +139,26 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
     SDL_Rect destRect;
     destRect.x = destX;
     destRect.y = destY;
-    SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
+    int showBlitRet = SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
+#ifdef __PSP__
+    if (showBlitRet != 0) {
+        SceUID fd = sceIoOpen("ms0:/showrect_error.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+        if (fd >= 0) {
+            char buf[512];
+            int n = snprintf(buf, sizeof(buf),
+                "GNW95_ShowRect: SDL_BlitSurface ret=%d err=\"%s\"\n"
+                "  srcRect(%d,%d %dx%d) dest(%d,%d)\n"
+                "  src: w=%d h=%d pitch=%d fmt=0x%x\n"
+                "  dst: w=%d h=%d pitch=%d fmt=0x%x\n",
+                showBlitRet, SDL_GetError() ? SDL_GetError() : "(null)",
+                srcRect.x, srcRect.y, srcRect.w, srcRect.h, destRect.x, destRect.y,
+                gSdlSurface->w, gSdlSurface->h, gSdlSurface->pitch, gSdlSurface->format->format,
+                gSdlTextureSurface->w, gSdlTextureSurface->h, gSdlTextureSurface->pitch, gSdlTextureSurface->format->format);
+            sceIoWrite(fd, buf, n);
+            sceIoClose(fd);
+        }
+    }
+#endif
 }
 
 bool svga_init(VideoOptions* video_options)
@@ -434,6 +489,41 @@ void renderPresent()
     }
     // Step 2: Push the window surface to the display.
     SDL_UpdateWindowSurface(gSdlWindow);
+
+    // One-shot pixel dump (only for first 10 frames, to avoid log spam)
+    {
+        static int frameCount = 0;
+        if (frameCount < 10) {
+            SceUID fd = sceIoOpen("ms0:/pixel_dump.txt",
+                PSP_O_WRONLY | PSP_O_CREAT | (frameCount == 0 ? PSP_O_TRUNC : PSP_O_APPEND), 0777);
+            if (fd >= 0) {
+                char buf[2048];
+                int pitch = gSdlTextureSurface->pitch;
+                int bpp = gSdlTextureSurface->format->BytesPerPixel;
+                Uint8* px = (Uint8*)gSdlTextureSurface->pixels;
+                int n = snprintf(buf, sizeof(buf),
+                    "=== Frame %d ===\n"
+                    "  interSurface: %dx%d pitch=%d bpp=%d fmt=0x%x\n"
+                    "  winSurface: %dx%d pitch=%d fmt=0x%x\n"
+                    "  Pixels[0,0]=0x%04x  [320,240]=0x%04x  [639,479]=0x%04x\n"
+                    "  Pixels[100,100]=0x%04x  [200,200]=0x%04x  [400,300]=0x%04x\n",
+                    frameCount,
+                    gSdlTextureSurface->w, gSdlTextureSurface->h,
+                    pitch, bpp, (unsigned)gSdlTextureSurface->format->format,
+                    gSdlWindowSurface->w, gSdlWindowSurface->h, gSdlWindowSurface->pitch,
+                    (unsigned)gSdlWindowSurface->format->format,
+                    *(Uint16*)(px + 0*pitch + 0*bpp),
+                    *(Uint16*)(px + 240*pitch + 320*bpp),
+                    *(Uint16*)(px + 479*pitch + 639*bpp),
+                    *(Uint16*)(px + 100*pitch + 100*bpp),
+                    *(Uint16*)(px + 200*pitch + 200*bpp),
+                    *(Uint16*)(px + 300*pitch + 400*bpp));
+                sceIoWrite(fd, buf, n);
+                sceIoClose(fd);
+                frameCount++;
+            }
+        }
+    }
 #else
     int updateResult = SDL_UpdateTexture(gSdlTexture, NULL, gSdlTextureSurface->pixels, gSdlTextureSurface->pitch);
     SDL_RenderClear(gSdlRenderer);
