@@ -2,7 +2,7 @@
 
 > **Date:** 13 July 2026
 > **Repository:** `github.com/abduznik/fallout1-ce-psp`
-> **HEAD:** `65b72c5`
+> **HEAD:** `9ce9d84`
 > **Branch:** `main`
 
 ---
