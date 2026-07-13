@@ -23,7 +23,11 @@
 #include <cmath>
 
 #include "mouse.h"
+#endif
 
+namespace fallout {
+
+#ifdef __PSP__
 extern SDL_GameController* gameController;
 
 // Forward declarations for PSP controller functions
@@ -48,8 +52,6 @@ float resolutionSpeedMod = 1.0f;
 float controllerLeftoverX = 0;
 float controllerLeftoverY = 0;
 #endif
-
-namespace fallout {
 
 typedef struct GNW95RepeatStruct {
     // Time when appropriate key was pressed down or -1 if it's up.

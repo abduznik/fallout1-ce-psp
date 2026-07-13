@@ -19,10 +19,6 @@
 #ifdef __PSP__
 #include <pspctrl.h>
 #include <pspkernel.h>
-
-PSP_MODULE_INFO("Fallout CE", 0, 1, 0);
-PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
-PSP_HEAP_SIZE_KB(-1);
 #endif
 
 namespace fallout {
