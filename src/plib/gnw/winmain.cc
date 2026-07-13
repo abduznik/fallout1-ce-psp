@@ -21,6 +21,7 @@
 #include <pspiofilemgr.h>
 #include <string.h>
 #include <pspthreadman.h>
+#include <psputility.h>
 #include <psputility_msgdialog.h>
 
 // Thread that auto-dismisses the PSP system dialog shown during game init.
