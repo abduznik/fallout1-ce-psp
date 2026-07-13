@@ -1,5 +1,9 @@
 #include "plib/gnw/dxinput.h"
 
+#ifdef __PSP__
+#include "mouse.h"
+#endif
+
 namespace fallout {
 
 static bool dxinput_mouse_init();
@@ -10,12 +14,22 @@ static void dxinput_keyboard_exit();
 static int gMouseWheelDeltaX = 0;
 static int gMouseWheelDeltaY = 0;
 
+#ifdef __PSP__
+SDL_GameController* gameController;
+#endif
+
 // 0x4E0400
 bool dxinput_init()
 {
     if (SDL_InitSubSystem(SDL_INIT_EVENTS) != 0) {
         return false;
     }
+
+#ifdef __PSP__
+    if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) {
+        return false;
+    }
+#endif
 
     if (!dxinput_mouse_init()) {
         goto err;
@@ -63,9 +77,16 @@ bool dxinput_get_mouse_state(MouseData* mouseState)
     // update mouse position manually.
     SDL_PumpEvents();
 
+#ifdef __PSP__
+    mouseState->buttons[0] = SDL_GameControllerGetButton(gameController, SDL_CONTROLLER_BUTTON_A);
+    mouseState->buttons[1] = SDL_GameControllerGetButton(gameController, SDL_CONTROLLER_BUTTON_B);
+    mouseState->x = 0;
+    mouseState->y = 0;
+#else
     Uint32 buttons = SDL_GetRelativeMouseState(&(mouseState->x), &(mouseState->y));
     mouseState->buttons[0] = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     mouseState->buttons[1] = (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+#endif
     mouseState->wheelX = gMouseWheelDeltaX;
     mouseState->wheelY = gMouseWheelDeltaY;
 
@@ -103,6 +124,9 @@ bool dxinput_read_keyboard_buffer(KeyboardData* keyboardData)
 // 0x4E070C
 bool dxinput_mouse_init()
 {
+#ifdef __PSP__
+    return true;
+#endif
     return SDL_SetRelativeMouseMode(SDL_TRUE) == 0;
 }
 

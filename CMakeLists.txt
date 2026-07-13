@@ -345,7 +345,24 @@ if(APPLE)
     set(MACOSX_BUNDLE_BUNDLE_VERSION "1.0.0")
 endif()
 
-if((NOT ${CMAKE_SYSTEM_NAME} MATCHES "Linux") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD"))
+if(PSP)
+    set(PSP_FLAGS "-O2 -G0 -DNDEBUG")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${PSP_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${PSP_FLAGS}")
+
+    target_link_libraries(${EXECUTABLE_NAME}
+        SDL2::SDL2
+        SDL2::SDL2main
+        pspctrl
+        pspgu
+        pspgum
+        pspvfpu
+    )
+
+    include("${CMAKE_SOURCE_DIR}/os/psp/psp.cmake")
+endif()
+
+if((NOT ${CMAKE_SYSTEM_NAME} MATCHES "Linux") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD") AND NOT VITA AND NOT PSP)
     add_subdirectory("third_party/sdl2")
 else()
     find_package(SDL2)

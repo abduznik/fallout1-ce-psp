@@ -18,6 +18,28 @@
 #include "plib/gnw/vcr.h"
 #include "plib/gnw/winmain.h"
 
+#ifdef __PSP__
+#include <algorithm>
+#include <cmath>
+
+#include "mouse.h"
+
+enum
+{
+    CONTROLLER_DEADZONE = 3000,
+};
+
+int16_t controllerLeftXAxis = 0;
+int16_t controllerLeftYAxis = 0;
+uint32_t lastControllerTime = 0;
+int32_t mapXScroll = 0;
+int32_t mapYScroll = 0;
+float cursorSpeedup = 1.0f;
+float resolutionSpeedMod = 1.0f;
+float controllerLeftoverX = 0;
+float controllerLeftoverY = 0;
+#endif
+
 namespace fallout {
 
 typedef struct GNW95RepeatStruct {
@@ -141,6 +163,10 @@ int GNW_input_init(int use_msec_timer)
         return -1;
     }
 
+#ifdef __PSP__
+    openController();
+#endif
+
     GNW95_build_key_map();
     GNW95_clear_time_stamps();
 
@@ -170,6 +196,10 @@ void GNW_input_exit()
     GNW_mouse_exit();
     GNW_kb_restore();
     dxinput_exit();
+
+#ifdef __PSP__
+    closeController();
+#endif
 
     FuncPtr curr = bk_list;
     while (curr != NULL) {
@@ -1135,9 +1165,35 @@ void GNW95_process_message()
         case SDL_QUIT:
             exit(EXIT_SUCCESS);
             break;
+#ifdef __PSP__
+        case SDL_CONTROLLERDEVICEREMOVED:
+            if (gameController != nullptr) {
+                const SDL_GameController* removedController = SDL_GameControllerFromInstanceID(e.jdevice.which);
+                if (removedController == gameController) {
+                    SDL_GameControllerClose(gameController);
+                    gameController = nullptr;
+                }
+            }
+            break;
+        case SDL_CONTROLLERDEVICEADDED:
+            if (gameController == nullptr) {
+                gameController = SDL_GameControllerOpen(e.jdevice.which);
+            }
+            break;
+        case SDL_CONTROLLERAXISMOTION:
+            handleControllerAxisEvent(e.caxis);
+            break;
+        case SDL_CONTROLLERBUTTONDOWN:
+        case SDL_CONTROLLERBUTTONUP:
+            handleControllerButtonEvent(e.cbutton);
+            break;
+#endif
         }
     }
 
+#ifdef __PSP__
+    processControllerAxisMotion();
+#endif
     touch_process_gesture();
 
     if (GNW95_isActive && !kb_is_disabled()) {
@@ -1236,5 +1292,143 @@ void endTextInput()
 {
     SDL_StopTextInput();
 }
+
+#ifdef __PSP__
+void openController()
+{
+    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+        if (SDL_IsGameController(i)) {
+            gameController = SDL_GameControllerOpen(i);
+        }
+    }
+}
+
+void closeController()
+{
+    if (gameController != nullptr && SDL_GameControllerGetAttached(gameController)) {
+        SDL_GameControllerClose(gameController);
+        gameController = nullptr;
+    }
+}
+
+void processControllerAxisMotion()
+{
+    const uint32_t currentTime = SDL_GetTicks();
+    const uint32_t deltaTime = currentTime - lastControllerTime;
+    lastControllerTime = currentTime;
+
+    if (controllerLeftXAxis != 0 || controllerLeftYAxis != 0) {
+        const int16_t xSign = (controllerLeftXAxis > 0) - (controllerLeftXAxis < 0);
+        const int16_t ySign = (controllerLeftYAxis > 0) - (controllerLeftYAxis < 0);
+
+        constexpr float CONTROLLER_SPEED_MOD = 0.000004f;
+        constexpr float CONTROLLER_AXIS_SPEEDUP = 1.03f;
+
+        float gTouchMouseDeltaX = std::pow(std::abs(controllerLeftXAxis), CONTROLLER_AXIS_SPEEDUP) * xSign * deltaTime
+                            * cursorSpeedup * resolutionSpeedMod * mouse_get_sensitivity() * CONTROLLER_SPEED_MOD + controllerLeftoverX;
+        float gTouchMouseDeltaY = std::pow(std::abs(controllerLeftYAxis), CONTROLLER_AXIS_SPEEDUP) * ySign * deltaTime
+                            * cursorSpeedup * resolutionSpeedMod * mouse_get_sensitivity() * CONTROLLER_SPEED_MOD + controllerLeftoverY;
+
+        controllerLeftoverX = gTouchMouseDeltaX - static_cast<int>(gTouchMouseDeltaX);
+        controllerLeftoverY = gTouchMouseDeltaY - static_cast<int>(gTouchMouseDeltaY);
+
+        int buttonState = 0;
+        if (SDL_GameControllerGetButton(gameController, SDL_CONTROLLER_BUTTON_A)) {
+            buttonState = MOUSE_STATE_LEFT_BUTTON_DOWN;
+        } else if (SDL_GameControllerGetButton(gameController, SDL_CONTROLLER_BUTTON_B)) {
+            buttonState = MOUSE_STATE_RIGHT_BUTTON_DOWN;
+        }
+
+        mouse_simulate_input(static_cast<int>(gTouchMouseDeltaX), static_cast<int>(gTouchMouseDeltaY), buttonState);
+    }
+}
+
+void handleControllerAxisEvent(const SDL_ControllerAxisEvent& motion)
+{
+    if (motion.axis == SDL_CONTROLLER_AXIS_LEFTX) {
+        if (std::abs(motion.value) > CONTROLLER_DEADZONE)
+            controllerLeftXAxis = motion.value;
+        else
+            controllerLeftXAxis = 0;
+    } else if (motion.axis == SDL_CONTROLLER_AXIS_LEFTY) {
+        if (std::abs(motion.value) > CONTROLLER_DEADZONE)
+            controllerLeftYAxis = motion.value;
+        else
+            controllerLeftYAxis = 0;
+    }
+}
+
+void handleControllerButtonEvent(const SDL_ControllerButtonEvent& button)
+{
+    KeyboardData keyboardData;
+
+    switch (button.button) {
+    case SDL_CONTROLLER_BUTTON_X:
+        // skills
+        keyboardData.key = SDL_SCANCODE_S;
+        keyboardData.down = (button.state & SDL_PRESSED) != 0;
+        GNW95_process_key(&keyboardData);
+        break;
+    case SDL_CONTROLLER_BUTTON_Y:
+        // inventory
+        keyboardData.key = SDL_SCANCODE_I;
+        keyboardData.down = (button.state & SDL_PRESSED) != 0;
+        GNW95_process_key(&keyboardData);
+        break;
+    case SDL_CONTROLLER_BUTTON_BACK:
+        // Esc (menu)
+        keyboardData.key = SDL_SCANCODE_ESCAPE;
+        keyboardData.down = (button.state & SDL_PRESSED) != 0;
+        GNW95_process_key(&keyboardData);
+        break;
+    case SDL_CONTROLLER_BUTTON_START:
+        // Enter
+        keyboardData.key = SDL_SCANCODE_RETURN;
+        keyboardData.down = (button.state & SDL_PRESSED) != 0;
+        GNW95_process_key(&keyboardData);
+        break;
+    case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+        // change active item / Pip-Boy
+        keyboardData.key = SDL_SCANCODE_TAB;
+        keyboardData.down = (button.state & SDL_PRESSED) != 0;
+        GNW95_process_key(&keyboardData);
+        break;
+    case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+        // cursor speed boost
+        if (button.type == SDL_CONTROLLERBUTTONDOWN) {
+            cursorSpeedup = 2.0f;
+        } else {
+            cursorSpeedup = 1.0f;
+        }
+        break;
+    case SDL_CONTROLLER_BUTTON_DPAD_UP:
+        // character sheet
+        keyboardData.key = SDL_SCANCODE_C;
+        keyboardData.down = (button.state & SDL_PRESSED) != 0;
+        GNW95_process_key(&keyboardData);
+        break;
+    case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+        // pipboy
+        keyboardData.key = SDL_SCANCODE_P;
+        keyboardData.down = (button.state & SDL_PRESSED) != 0;
+        GNW95_process_key(&keyboardData);
+        break;
+    case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+        // start combat / toggle combat
+        keyboardData.key = SDL_SCANCODE_A;
+        keyboardData.down = (button.state & SDL_PRESSED) != 0;
+        GNW95_process_key(&keyboardData);
+        break;
+    case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+        // next turn / wait
+        keyboardData.key = SDL_SCANCODE_SPACE;
+        keyboardData.down = (button.state & SDL_PRESSED) != 0;
+        GNW95_process_key(&keyboardData);
+        break;
+    default:
+        break;
+    }
+}
+#endif
 
 } // namespace fallout

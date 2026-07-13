@@ -16,6 +16,15 @@
 #include "platform/ios/paths.h"
 #endif
 
+#ifdef __PSP__
+#include <pspctrl.h>
+#include <pspkernel.h>
+
+PSP_MODULE_INFO("Fallout CE", 0, 1, 0);
+PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
+PSP_HEAP_SIZE_KB(-1);
+#endif
+
 namespace fallout {
 
 // 0x53A290
@@ -56,6 +65,12 @@ int main(int argc, char* argv[])
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     chdir(SDL_AndroidGetExternalStoragePath());
+#endif
+
+#ifdef __PSP__
+    chdir("ms0:/PSP/GAME/FOUT00001/");
+    sceCtrlSetSamplingCycle(0);
+    sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
 #endif
 
     SDL_ShowCursor(SDL_DISABLE);
