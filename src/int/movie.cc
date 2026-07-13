@@ -362,7 +362,7 @@ static void movie_MVE_ShowFrame(SDL_Surface* surface, int srcWidth, int srcHeigh
     {
         static int dumpFrameCount = 0;
         dumpFrameCount++;
-        if (dumpFrameCount == 15) {
+        if (dumpFrameCount == 3) {
             // Dump gMovieSdlSurface1 raw INDEX8 pixels (the MVE decode output)
             int pitch = surface->pitch;
             int w = surface->w, h = surface->h;
@@ -417,7 +417,7 @@ static void movie_MVE_ShowFrame(SDL_Surface* surface, int srcWidth, int srcHeigh
     {
         static int texDumpCount = 0;
         texDumpCount++;
-        if (texDumpCount == 15) {
+        if (texDumpCount == 3) {
             SceUID fd = sceIoOpen("ms0:/frame_tex_rgb565.bin",
                 PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
             if (fd >= 0) {
