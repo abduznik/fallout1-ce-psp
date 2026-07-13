@@ -319,7 +319,25 @@ static void movie_MVE_ShowFrame(SDL_Surface* surface, int srcWidth, int srcHeigh
     }
 
     SDL_SetSurfacePalette(surface, gSdlSurface->format->palette);
+#ifdef __PSP__
+    // Manual INDEX8 row-copy to bypass PSP SDL2's closed-source SDL_BlitSurface
+    // (suspected of producing corrupted output during MVE movie playback).
+    // Both surfaces are INDEX8 (1 byte/pixel); memcpy-per-row avoids any
+    // SDL2-internal pitch/coordinate miscalculation.
+    {
+        int copyW = srcRect.w;
+        int copyH = srcRect.h;
+        Uint8* srcRow = (Uint8*)surface->pixels + srcRect.y * surface->pitch + srcRect.x;
+        Uint8* dstRow = (Uint8*)gSdlSurface->pixels + destRect.y * gSdlSurface->pitch + destRect.x;
+        for (int y = 0; y < copyH; y++) {
+            memcpy(dstRow, srcRow, copyW);
+            srcRow += surface->pitch;
+            dstRow += gSdlSurface->pitch;
+        }
+    }
+#else
     SDL_BlitSurface(surface, &srcRect, gSdlSurface, &destRect);
+#endif
 #ifdef __PSP__
     psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
 #else
