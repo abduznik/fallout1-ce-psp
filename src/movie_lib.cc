@@ -12,6 +12,11 @@
 #include "audio_engine.h"
 #include "platform_compat.h"
 
+#ifdef __PSP__
+#include <pspiofilemgr.h>
+#include <stdio.h>
+#endif
+
 namespace fallout {
 
 typedef struct STRUCT_6B3690 {
@@ -1514,6 +1519,29 @@ static int _nfConfig(int a1, int a2, int a3, int a4)
     if (gMovieSdlSurface2 == NULL) {
         return 0;
     }
+
+#ifdef __PSP__
+    {
+        SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+            PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+        if (fd >= 0) {
+            char buf[256];
+            int n = snprintf(buf, sizeof(buf),
+                "MVE_ALLOC: _mveBW=%d _mveBH=%d depth=%d "
+                "surf1 pitch=%d w=%d h=%d "
+                "surf2 pitch=%d w=%d h=%d\n",
+                _mveBW, _mveBH, depth,
+                gMovieSdlSurface1->pitch,
+                gMovieSdlSurface1->w,
+                gMovieSdlSurface1->h,
+                gMovieSdlSurface2->pitch,
+                gMovieSdlSurface2->w,
+                gMovieSdlSurface2->h);
+            sceIoWrite(fd, buf, strlen(buf));
+            sceIoClose(fd);
+        }
+    }
+#endif
 
     dword_6B4027 = a4;
     dword_6B402B = a3 * _mveBW - 8;
