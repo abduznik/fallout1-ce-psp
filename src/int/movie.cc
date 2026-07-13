@@ -868,6 +868,12 @@ static int movieStart(int win, char* filePath, int (*a3)())
 
     if ((movieFlags & MOVIE_EXTENDED_FLAG_0x04) != 0) {
         debug_printf("Direct ");
+#ifdef __PSP__
+        {
+            SceUID fd = sceIoOpen("ms0:/psp_debug.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) { sceIoWrite(fd, "MOVIE_PATH: Direct (movie_MVE_ShowFrame)\n", 43); sceIoClose(fd); }
+        }
+#endif
         win_get_rect(GNWWin, &winRect);
         debug_printf("Playing at (%d, %d)  ", movieX + winRect.ulx, movieY + winRect.uly);
         _MVE_rmCallbacks(a3);
@@ -878,6 +884,12 @@ static int movieStart(int win, char* filePath, int (*a3)())
         v15 = movieX + winRect.ulx;
     } else {
         debug_printf("Buffered ");
+#ifdef __PSP__
+        {
+            SceUID fd = sceIoOpen("ms0:/psp_debug.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) { sceIoWrite(fd, "MOVIE_PATH: Buffered (movieShowFrame)\n", 40); sceIoClose(fd); }
+        }
+#endif
         _MVE_rmCallbacks(a3);
         _MVE_sfCallbacks(movieShowFrame);
         v17 = 0;
