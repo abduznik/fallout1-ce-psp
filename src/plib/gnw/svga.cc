@@ -43,17 +43,20 @@ void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRect,
             color_diag_done = 1;
             // Pick a non-zero palette entry for known-color comparison
             int testIdx = 127;
-            Uint16 pixel = ((colors[testIdx].r >> 3) << 11) |
+            // Pack as BGR565 (PSP window surface format)
+            Uint16 pixel = ((colors[testIdx].b >> 3) << 11) |
                            ((colors[testIdx].g >> 2) << 5) |
-                           (colors[testIdx].b >> 3);
+                           (colors[testIdx].r >> 3);
             char buf[512];
             int n = snprintf(buf, sizeof(buf),
                 "COLOR_DIAG: pal[%d] R=%d G=%d B=%d (shifted R>>3=%d G>>2=%d B>>3=%d) "
-                "pixel=0x%04x  packing=(r>>3)<<11|(g>>2)<<5|(b>>3)\n",
+                "pixel=0x%04x  packing=(b>>3)<<11|(g>>2)<<5|(r>>3) (BGR565 for PSP)\n"
+                "surf_fmt=0x%x\n",
                 testIdx,
                 colors[testIdx].r, colors[testIdx].g, colors[testIdx].b,
                 colors[testIdx].r >> 3, colors[testIdx].g >> 2, colors[testIdx].b >> 3,
-                pixel);
+                pixel,
+                (unsigned)dst->format->format);
             SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
                 PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
             if (fd >= 0) {
@@ -82,9 +85,9 @@ void psp_convert_index8_to_rgb565(SDL_Surface* src, const SDL_Rect* srcRect,
     for (int y = 0; y < sh; y++) {
         for (int x = 0; x < sw; x++) {
             Uint8 index = srcBase[x];
-            Uint16 pixel = ((colors[index].r >> 3) << 11) |
+            Uint16 pixel = ((colors[index].b >> 3) << 11) |
                            ((colors[index].g >> 2) << 5) |
-                           (colors[index].b >> 3);
+                           (colors[index].r >> 3);
             ((Uint16*)dstBase)[x] = pixel;
         }
         srcBase += srcPitch;
