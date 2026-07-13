@@ -357,6 +357,7 @@ if(PSP)
         pspgu
         pspgum
         pspvfpu
+        psputility
     )
 
     include("${CMAKE_SOURCE_DIR}/os/psp/psp.cmake")

@@ -18,9 +18,21 @@
 
 #ifdef __PSP__
 #include <pspctrl.h>
-#include <pspdebug.h>
 #include <pspiofilemgr.h>
 #include <string.h>
+#include <pspthreadman.h>
+#include <psputility_msgdialog.h>
+
+// Thread that auto-dismisses the PSP system dialog shown during game init.
+// Without this, the game sits forever at sceUtilityMsgDialogUpdate waiting
+// for user input — and we can't send input from a terminal session.
+int dialogDismissThread(SceSize args, void* argp)
+{
+    sceKernelDelayThread(3000000);  // Wait 3s for dialog to appear
+    sceUtilityMsgDialogAbort();     // Dismiss it
+    sceKernelExitDeleteThread(0);
+    return 0;
+}
 #endif
 
 namespace fallout {
@@ -76,6 +88,15 @@ int main(int argc, char* argv[])
         const char* msg = "=== FALLOUT1-CE PSP STARTUP ===\n";
         sceIoWrite(fd, msg, strlen(msg));
         sceIoClose(fd);
+    }
+    // Create a thread to auto-dismiss the PSP system dialog that appears
+    // during game init (save-data check). This dialog blocks the render
+    // loop and prevents svga_init() from completing.
+    SceUID dismissThread = sceKernelCreateThread("dialog_dismiss",
+        (SceKernelThreadEntry)dialogDismissThread,
+        0x11, 0x1000, PSP_THREAD_ATTR_USER, NULL);
+    if (dismissThread >= 0) {
+        sceKernelStartThread(dismissThread, 0, NULL);
     }
 #endif
 
