@@ -34,3 +34,18 @@
 7. **One hypothesis at a time.** Prepend diagnostic output with a clear
    label so the boss can read exactly which theory was being tested. Every
    debug build is proving or disproving exactly one thing.
+
+## Build & deploy cycle
+
+1. Commit + push to `github.com/abduznik/fallout1-ce-psp` (branch `main`)
+2. SSH to homelab (`arb` host): `git pull origin main`
+3. Build: `export PSPDEV=/opt/pspdev && export PATH=$PSPDEV/bin:$PATH && cd build_psp && touch ../src/plib/gnw/svga.cc && make -j4`
+4. SCP EBOOT.PBP back: `scp arb:~/fallout1-ce-psp/build_psp/EBOOT.PBP /f/emulators/ppsspp/memstick/PSP/GAME/FOUT00002/EBOOT.PBP`
+5. Kill stale PPSSPP: `cmd //c "taskkill /F /IM PPSSPPWindows64.exe"`
+6. Launch: `cmd //c "start /B F:\emulators\ppsspp\PPSSPPWindows64.exe F:\emulators\ppsspp\memstick\PSP\GAME\FOUT00002\EBOOT.PBP"`
+7. Wait 35–45s for intros, then take screenshot via PowerShell cap2.ps1
+8. Read debug logs from `F:\emulators\ppsspp\memstick\psp_debug.txt`
+
+Note: PSP firmware homebrew path `ms0:/PSP/GAME/FOUT00002/` contains the
+game data (MASTER.DAT, CRITTER.DAT, DATA/). The EBOOT.PBP gets overwritten
+each deploy via SCP from the homelab.
