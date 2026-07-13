@@ -357,6 +357,42 @@ static void movie_MVE_ShowFrame(SDL_Surface* surface, int srcWidth, int srcHeigh
             PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
         if (fd >= 0) { sceIoWrite(fd, buf, strlen(buf)); sceIoClose(fd); }
     }
+    // One-shot raw decode dump: capture frame N of MVE playback to
+    // check if corruption exists in gMovieSdlSurface1 before any blit/convert.
+    {
+        static int dumpFrameCount = 0;
+        dumpFrameCount++;
+        if (dumpFrameCount == 15) {
+            // Dump gMovieSdlSurface1 raw INDEX8 pixels (the MVE decode output)
+            int pitch = surface->pitch;
+            int w = surface->w, h = surface->h;
+            {
+                SceUID fd = sceIoOpen("ms0:/frame_movie_raw_index8.bin",
+                    PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
+                if (fd >= 0) {
+                    Uint8* base = (Uint8*)surface->pixels;
+                    for (int y = 0; y < h; y++) {
+                        sceIoWrite(fd, base + y * pitch, w);
+                    }
+                    sceIoClose(fd);
+                }
+            }
+            // Dump the palette used for this frame
+            if (surface->format->palette) {
+                SceUID fd = sceIoOpen("ms0:/frame_movie_palette.bin",
+                    PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
+                if (fd >= 0) {
+                    SDL_Color* colors = surface->format->palette->colors;
+                    // Write 256 RGB triplets (3 bytes each)
+                    for (int i = 0; i < 256; i++) {
+                        Uint8 rgb[3] = {colors[i].r, colors[i].g, colors[i].b};
+                        sceIoWrite(fd, rgb, 3);
+                    }
+                    sceIoClose(fd);
+                }
+            }
+        }
+    }
     // Manual INDEX8 row-copy to bypass PSP SDL2's closed-source SDL_BlitSurface
     // (suspected of producing corrupted output during MVE movie playback).
     // Both surfaces are INDEX8 (1 byte/pixel); memcpy-per-row avoids any
@@ -377,6 +413,24 @@ static void movie_MVE_ShowFrame(SDL_Surface* surface, int srcWidth, int srcHeigh
 #endif
 #ifdef __PSP__
     psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
+    // Dump gSdlTextureSurface right after conversion (frame 15 only)
+    {
+        static int texDumpCount = 0;
+        texDumpCount++;
+        if (texDumpCount == 15) {
+            SceUID fd = sceIoOpen("ms0:/frame_tex_rgb565.bin",
+                PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
+            if (fd >= 0) {
+                int tpitch = gSdlTextureSurface->pitch;
+                int tw = gSdlTextureSurface->w, th = gSdlTextureSurface->h;
+                Uint8* tbase = (Uint8*)gSdlTextureSurface->pixels;
+                for (int y = 0; y < th; y++) {
+                    sceIoWrite(fd, tbase + y * tpitch, tw * 2);
+                }
+                sceIoClose(fd);
+            }
+        }
+    }
 #else
     SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
 #endif
