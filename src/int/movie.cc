@@ -21,6 +21,11 @@
 #include "plib/gnw/text.h"
 #include "plib/gnw/winmain.h"
 
+#ifdef __PSP__
+#include <pspiofilemgr.h>
+#include <stdio.h>
+#endif
+
 namespace fallout {
 
 typedef void(MovieCallback)();
