@@ -27,6 +27,11 @@ static void psp_debug_log(const char* msg) {
     }
 }
 
+// Frame-version counter for gSdlTextureSurface torn-read detection.
+// Incremented at the start of each write, incremented again at the end.
+// An odd read-version means a write was in progress when we read.
+static volatile int gSdlTextureVersion = 0;
+
 // Manual INDEX8->RGB565 conversion.
 // PSP SDL2's SDL_BlitSurface silently fails on INDEX8->RGB565 blits
 // to separately-allocated surfaces (returns 0 but writes nothing).
@@ -120,11 +125,6 @@ SDL_Texture* gSdlTexture = NULL;
 SDL_Surface* gSdlTextureSurface = NULL;
 #ifdef __PSP__
 SDL_Surface* gSdlWindowSurface = NULL;
-
-// Frame-version counter for gSdlTextureSurface torn-read detection.
-// Incremented at the start of each write, incremented again at the end.
-// An odd read-version means a write was in progress when we read.
-static volatile int gSdlTextureVersion = 0;
 
 // Manual nearest-neighbor RGB565→RGB565 scaler with fixed-point accumulator.
 // Replaces SDL_BlitScaled on PSP because SDL_BlitScaled's rounding behavior is
