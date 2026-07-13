@@ -79,7 +79,7 @@ int main(int argc, char* argv[])
 #endif
 
 #ifdef __PSP__
-    chdir("ms0:/PSP/GAME/FOUT00001/");
+    chdir("ms0:/PSP/GAME/FOUT00002/");
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     // Write a startup marker to the debug file so we can confirm 
