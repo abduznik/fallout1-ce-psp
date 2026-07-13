@@ -354,7 +354,6 @@ if(PSP)
         SDL2::SDL2
         SDL2::SDL2main
         pspctrl
-        pspdebug
         pspgu
         pspgum
         pspvfpu
