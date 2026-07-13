@@ -231,44 +231,73 @@ void renderPresent()
     static bool dumpDone = false;
     if (!dumpDone) {
         dumpDone = true;
-        // Draw debug pattern directly into gSdlSurface pixels.
-        // The game renders using 8-bit indices; writing known indices
-        // to known positions lets us verify the palette and blit pipeline.
-        if (gSdlSurface != NULL && gSdlSurface->pixels != NULL && gSdlSurface->format->palette != NULL) {
-            int w = gSdlSurface->w;
-            int h = gSdlSurface->h;
-            int pitch = gSdlSurface->pitch;
-            Uint8* pixels = (Uint8*)gSdlSurface->pixels;
+        // Write test pattern to gSdlTextureSurface (final RGB surface before
+        // texture upload). Handle both RGB888 and RGB565/16-bit formats.
+        if (gSdlTextureSurface != NULL && gSdlTextureSurface->pixels != NULL) {
+            int tw = gSdlTextureSurface->w;
+            int th = gSdlTextureSurface->h;
+            int pitch = gSdlTextureSurface->pitch;
+            int bpp = gSdlTextureSurface->format->BytesPerPixel;
+            Uint32 fmt = gSdlTextureSurface->format->format;
+            Uint8* rgb = (Uint8*)gSdlTextureSurface->pixels;
 
-            // Draw a 32x32 color bar at top-left using palette indices 1..16
-            // Each vertical stripe is 2 pixels wide, alternating index
-            for (int y = 0; y < 32 && y < h; y++) {
-                for (int x = 0; x < 32 && x < w; x++) {
-                    int idx = (x / 2) % 16 + 1;  // palette indices 1..16
-                    pixels[y * pitch + x] = (Uint8)idx;
+            // Helper: write a pixel in native format
+            auto writePixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b) {
+                if (x < 0 || x >= tw || y < 0 || y >= th) return;
+                Uint8* p = &rgb[y * pitch + x * bpp];
+                if (bpp == 2) {
+                    // RGB565: RRRRRGGGGGGBBBBB
+                    Uint16 val = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+                    *(Uint16*)p = val;
+                } else if (bpp == 3) {
+                    p[0] = r; p[1] = g; p[2] = b;
+                } else if (bpp == 4) {
+                    p[0] = r; p[1] = g; p[2] = b; p[3] = 255;
+                }
+            };
+
+            // Draw a 32x32 rainbow test pattern at top-left
+            for (int y = 0; y < 32 && y < th; y++) {
+                for (int x = 0; x < 32 && x < tw; x++) {
+                    writePixel(x, y, (Uint8)(x * 8), (Uint8)(y * 8), (Uint8)(128 + x * 4 - y * 4));
                 }
             }
 
-            // Draw a white border (palette index 255 = white if identity palette)
-            for (int x = 0; x < 640 && x < w; x++) {
-                pixels[0 * pitch + x] = 255;       // top row
-                if (h > 0) pixels[(h-1) * pitch + x] = 255;  // bottom row
+            // Draw a white border around the entire texture
+            for (int x = 0; x < tw; x++) {
+                writePixel(x, 0, 255, 255, 255);
+                writePixel(x, th-1, 255, 255, 255);
             }
-            for (int y = 0; y < 480 && y < h; y++) {
-                pixels[y * pitch + 0] = 255;       // left col
-                if (w > 0) pixels[y * pitch + (w-1)] = 255;  // right col
+            for (int y = 0; y < th; y++) {
+                writePixel(0, y, 255, 255, 255);
+                writePixel(tw-1, y, 255, 255, 255);
             }
 
-            // Print palette info directly into top-right corner pixels
-            // Use palette indices 200+ which should be bright if palette is OK
-            SDL_Palette* pal = gSdlSurface->format->palette;
-            for (int i = 0; i < 16 && i < (int)pal->ncolors; i++) {
-                int px = w - 64 + (i % 8) * 8;
-                int py = 2 + (i / 8) * 10;
-                // Write a small colored square using palette index 200+i
-                for (int dy = 0; dy < 8 && py+dy < h; dy++) {
-                    for (int dx = 0; dx < 7 && px+dx < w; dx++) {
-                        pixels[(py+dy) * pitch + (px+dx)] = (Uint8)(200 + i);
+            // Also draw colored squares showing first 16 palette entries
+            if (gSdlSurface != NULL && gSdlSurface->format->palette != NULL) {
+                SDL_Palette* pal = gSdlSurface->format->palette;
+                for (int i = 0; i < 16 && i < (int)pal->ncolors; i++) {
+                    int px = tw - 80 + (i % 8) * 10;
+                    int py = 4 + (i / 8) * 10;
+                    for (int dy = 0; dy < 8 && py+dy < th; dy++) {
+                        for (int dx = 0; dx < 8 && px+dx < tw; dx++) {
+                            writePixel(px+dx, py+dy, pal->colors[i].r, pal->colors[i].g, pal->colors[i].b);
+                        }
+                    }
+                }
+            }
+
+            // Log texture format info (will appear as pattern on screen)
+            // Write the format as colored bars at the bottom
+            char fmtStr[64];
+            snprintf(fmtStr, sizeof(fmtStr), "FMT:%dx%dbpp%d", tw, th, bpp);
+            for (size_t ci = 0; ci < strlen(fmtStr) && ci < 60; ci++) {
+                int px = 4 + ci * 8;
+                int py = th - 20;
+                Uint8 brightness = (Uint8)(fmtStr[ci] * 4);
+                for (int dy = 0; dy < 8 && py+dy < th; dy++) {
+                    for (int dx = 0; dx < 6 && px+dx < tw; dx++) {
+                        writePixel(px+dx, py+dy, brightness, brightness, 255-brightness);
                     }
                 }
             }
