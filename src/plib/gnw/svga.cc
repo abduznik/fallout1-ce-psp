@@ -106,7 +106,9 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
 bool svga_init(VideoOptions* video_options)
 {
     psp_debug_log("svga_init: SDL_SetHint...\n");
+#ifndef __PSP__
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+#endif
 
     psp_debug_log("svga_init: SDL_InitSubSystem...\n");
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
@@ -115,7 +117,13 @@ bool svga_init(VideoOptions* video_options)
     }
     psp_debug_log("svga_init: SDL_InitSubSystem OK\n");
 
-    Uint32 windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI;
+    Uint32 windowFlags = SDL_WINDOW_ALLOW_HIGHDPI;
+#ifdef __PSP__
+    // PSP has no OpenGL support; use surface-based window.
+    windowFlags = 0;
+#else
+    windowFlags |= SDL_WINDOW_OPENGL;
+#endif
 
     if (video_options->fullscreen) {
         windowFlags |= SDL_WINDOW_FULLSCREEN;
@@ -247,8 +255,6 @@ static bool createRenderer(int width, int height)
 {
 #ifdef __PSP__
     // In-memory buffer for logging inside createRenderer.
-    // PSP's file I/O (sceIoOpen/sceIoWrite) can fail silently after SDL
-    // touches graphics hardware, so we buffer everything and dump once.
     static char crBuf[2048];
     int crPos = 0;
 #define CRLOG(fmt, ...) do { \
@@ -263,25 +269,49 @@ static bool createRenderer(int width, int height)
     const char* errBefore = SDL_GetError();
     CRLOG("  createRenderer: SDL_GetError before=\"%s\"\n", errBefore ? errBefore : "(null)");
 
+#ifdef __PSP__
+    // PSP: SDL2 renderer limits textures to 512x512 (hardware constraint of
+    // the PSP's Media Engine GPU). Our 640x480 framebuffer exceeds this.
+    // Use surface-based rendering (SDL_GetWindowSurface + SDL_UpdateWindowSurface)
+    // instead of the renderer/texture pipeline.
+    CRLOG("  createRenderer: PSP path — using window surface\n");
+    gSdlRenderer = NULL;
+    gSdlTexture = NULL;
+    gSdlTextureSurface = SDL_GetWindowSurface(gSdlWindow);
+    if (gSdlTextureSurface == NULL) {
+        CRLOG("  createRenderer: SDL_GetWindowSurface FAILED err=\"%s\"\n",
+            SDL_GetError() ? SDL_GetError() : "(null)");
+        goto cr_dump_fail;
+    }
+    CRLOG("  createRenderer: SDL_GetWindowSurface OK fmt=0x%x w=%d h=%d bpp=%d\n",
+        (unsigned)gSdlTextureSurface->format->format,
+        gSdlTextureSurface->w, gSdlTextureSurface->h,
+        gSdlTextureSurface->format->BytesPerPixel);
+#else
+    // Non-PSP: standard renderer path
     CRLOG("  createRenderer: SDL_CreateRenderer...\n");
     gSdlRenderer = SDL_CreateRenderer(gSdlWindow, -1, 0);
     if (gSdlRenderer == NULL) {
-        CRLOG("  createRenderer: SDL_CreateRenderer FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        CRLOG("  createRenderer: SDL_CreateRenderer FAILED err=\"%s\"\n",
+            SDL_GetError() ? SDL_GetError() : "(null)");
         goto cr_dump_fail;
     }
     CRLOG("  createRenderer: SDL_CreateRenderer OK\n");
 
     CRLOG("  createRenderer: SDL_RenderSetLogicalSize...\n");
     if (SDL_RenderSetLogicalSize(gSdlRenderer, width, height) != 0) {
-        CRLOG("  createRenderer: SDL_RenderSetLogicalSize FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        CRLOG("  createRenderer: SDL_RenderSetLogicalSize FAILED err=\"%s\"\n",
+            SDL_GetError() ? SDL_GetError() : "(null)");
         goto cr_dump_fail;
     }
     CRLOG("  createRenderer: SDL_RenderSetLogicalSize OK\n");
 
     CRLOG("  createRenderer: SDL_CreateTexture RGB888...\n");
-    gSdlTexture = SDL_CreateTexture(gSdlRenderer, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STREAMING, width, height);
+    gSdlTexture = SDL_CreateTexture(gSdlRenderer, SDL_PIXELFORMAT_RGB888,
+        SDL_TEXTUREACCESS_STREAMING, width, height);
     if (gSdlTexture == NULL) {
-        CRLOG("  createRenderer: SDL_CreateTexture FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        CRLOG("  createRenderer: SDL_CreateTexture FAILED err=\"%s\"\n",
+            SDL_GetError() ? SDL_GetError() : "(null)");
         goto cr_dump_fail;
     }
     CRLOG("  createRenderer: SDL_CreateTexture OK\n");
@@ -289,39 +319,35 @@ static bool createRenderer(int width, int height)
     CRLOG("  createRenderer: SDL_QueryTexture...\n");
     Uint32 format;
     if (SDL_QueryTexture(gSdlTexture, &format, NULL, NULL, NULL) != 0) {
-        CRLOG("  createRenderer: SDL_QueryTexture FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        CRLOG("  createRenderer: SDL_QueryTexture FAILED err=\"%s\"\n",
+            SDL_GetError() ? SDL_GetError() : "(null)");
         goto cr_dump_fail;
     }
     CRLOG("  createRenderer: SDL_QueryTexture OK format=0x%x\n", (unsigned)format);
 
     CRLOG("  createRenderer: SDL_CreateRGBSurfaceWithFormat...\n");
-    gSdlTextureSurface = SDL_CreateRGBSurfaceWithFormat(0, width, height, SDL_BITSPERPIXEL(format), format);
+    gSdlTextureSurface = SDL_CreateRGBSurfaceWithFormat(0, width, height,
+        SDL_BITSPERPIXEL(format), format);
     if (gSdlTextureSurface == NULL) {
-        CRLOG("  createRenderer: SDL_CreateRGBSurfaceWithFormat FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        CRLOG("  createRenderer: SDL_CreateRGBSurfaceWithFormat FAILED err=\"%s\"\n",
+            SDL_GetError() ? SDL_GetError() : "(null)");
         goto cr_dump_fail;
     }
     CRLOG("  createRenderer: SDL_CreateRGBSurfaceWithFormat OK\n");
+#endif
 
 #ifdef __PSP__
-    {
-        SceUID fd = sceIoOpen("ms0:/create_renderer_debug.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
-        if (fd >= 0) {
-            sceIoWrite(fd, crBuf, strlen(crBuf));
-            sceIoClose(fd);
-        }
-    }
+    { SceUID fd = sceIoOpen("ms0:/create_renderer_debug.txt",
+        PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
+      if (fd >= 0) { sceIoWrite(fd, crBuf, strlen(crBuf)); sceIoClose(fd); } }
 #endif
     return true;
 
 cr_dump_fail:
 #ifdef __PSP__
-    {
-        SceUID fd = sceIoOpen("ms0:/create_renderer_debug.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
-        if (fd >= 0) {
-            sceIoWrite(fd, crBuf, strlen(crBuf));
-            sceIoClose(fd);
-        }
-    }
+    { SceUID fd = sceIoOpen("ms0:/create_renderer_debug.txt",
+        PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
+      if (fd >= 0) { sceIoWrite(fd, crBuf, strlen(crBuf)); sceIoClose(fd); } }
 #endif
     return false;
 #undef CRLOG
@@ -329,6 +355,13 @@ cr_dump_fail:
 
 static void destroyRenderer()
 {
+#ifdef __PSP__
+    // Window surface is owned by the window; SDL_DestroyWindow frees it.
+    // Don't free gSdlTextureSurface or destroy renderer/texture here.
+    gSdlTextureSurface = NULL;
+    gSdlTexture = NULL;
+    gSdlRenderer = NULL;
+#else
     if (gSdlTextureSurface != NULL) {
         SDL_FreeSurface(gSdlTextureSurface);
         gSdlTextureSurface = NULL;
@@ -343,6 +376,7 @@ static void destroyRenderer()
         SDL_DestroyRenderer(gSdlRenderer);
         gSdlRenderer = NULL;
     }
+#endif
 }
 
 void handleWindowSizeChanged()
@@ -353,10 +387,14 @@ void handleWindowSizeChanged()
 
 void renderPresent()
 {
+#ifdef __PSP__
+    SDL_UpdateWindowSurface(gSdlWindow);
+#else
     int updateResult = SDL_UpdateTexture(gSdlTexture, NULL, gSdlTextureSurface->pixels, gSdlTextureSurface->pitch);
     SDL_RenderClear(gSdlRenderer);
     int copyResult = SDL_RenderCopy(gSdlRenderer, gSdlTexture, NULL, NULL);
     SDL_RenderPresent(gSdlRenderer);
+#endif
 }
 
 } // namespace fallout
