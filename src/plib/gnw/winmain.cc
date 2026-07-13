@@ -18,6 +18,7 @@
 
 #ifdef __PSP__
 #include <pspctrl.h>
+#include <pspdebug.h>
 #endif
 
 namespace fallout {
@@ -66,6 +67,16 @@ int main(int argc, char* argv[])
     chdir("ms0:/PSP/GAME/FOUT00001/");
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
+    pspDebugScreenInit();
+    pspDebugScreenPrintf("winmain: startup\n");
+    // Write a startup marker to the debug file so we can confirm 
+    // the app boots at all, even if svga.cc's renderPresent never fires.
+    SceUID fd = sceIoOpen("ms0:/psp_debug.txt", PSP_O_WRONLY | PSP_O_CREAT, 0777);
+    if (fd >= 0) {
+        const char* msg = "=== FALLOUT1-CE PSP STARTUP ===\n";
+        sceIoWrite(fd, msg, strlen(msg));
+        sceIoClose(fd);
+    }
 #endif
 
     SDL_ShowCursor(SDL_DISABLE);

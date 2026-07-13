@@ -5,6 +5,14 @@
 #include "plib/gnw/mouse.h"
 #include "plib/gnw/winmain.h"
 
+#ifdef __PSP__
+#include <pspdebug.h>
+#include <pspiofilemgr.h>
+#include <stdio.h>
+#include <string.h>
+// Debug screen is initted early in winmain.cc; we just call pspDebugScreenPrintf here.
+#endif
+
 namespace fallout {
 
 static bool createRenderer(int width, int height);
@@ -227,87 +235,100 @@ void handleWindowSizeChanged()
 
 void renderPresent()
 {
-    // DEBUG: one-shot palette + surface dump on first frame
-    static bool dumpDone = false;
-    if (!dumpDone) {
-        dumpDone = true;
-        // Write test pattern to gSdlTextureSurface (final RGB surface before
-        // texture upload). Handle both RGB888 and RGB565/16-bit formats.
-        if (gSdlTextureSurface != NULL && gSdlTextureSurface->pixels != NULL) {
-            int tw = gSdlTextureSurface->w;
-            int th = gSdlTextureSurface->h;
-            int pitch = gSdlTextureSurface->pitch;
-            int bpp = gSdlTextureSurface->format->BytesPerPixel;
-            Uint32 fmt = gSdlTextureSurface->format->format;
-            Uint8* rgb = (Uint8*)gSdlTextureSurface->pixels;
+#ifdef __PSP__
+    // One-shot PSP debug dump: writes format info to file on ms0:
+    // and also attempts on-screen output via pspDebugScreenPrintf.
+    static bool pspDebugDone = false;
+    if (!pspDebugDone) {
+        pspDebugDone = true;
 
-            // Helper: write a pixel in native format
-            auto writePixel = [&](int x, int y, Uint8 r, Uint8 g, Uint8 b) {
-                if (x < 0 || x >= tw || y < 0 || y >= th) return;
-                Uint8* p = &rgb[y * pitch + x * bpp];
-                if (bpp == 2) {
-                    // RGB565: RRRRRGGGGGGBBBBB
-                    Uint16 val = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-                    *(Uint16*)p = val;
-                } else if (bpp == 3) {
-                    p[0] = r; p[1] = g; p[2] = b;
-                } else if (bpp == 4) {
-                    p[0] = r; p[1] = g; p[2] = b; p[3] = 255;
-                }
-            };
+        // --- File output (most reliable) ---
+        // Use PSP native file API to write debug info to memory stick.
+        char dbgBuf[1024];
+        int dbgLen = 0;
 
-            // Draw a 32x32 rainbow test pattern at top-left
-            for (int y = 0; y < 32 && y < th; y++) {
-                for (int x = 0; x < 32 && x < tw; x++) {
-                    writePixel(x, y, (Uint8)(x * 8), (Uint8)(y * 8), (Uint8)(128 + x * 4 - y * 4));
+        // Texture format info
+        Uint32 texFmt = gSdlTextureSurface ? gSdlTextureSurface->format->format : 0;
+        Uint32 surFmt = gSdlSurface ? gSdlSurface->format->format : 0;
+        Uint16 palCount = (gSdlSurface && gSdlSurface->format->palette) ? gSdlSurface->format->palette->ncolors : 0;
+        int texBpp = gSdlTextureSurface ? gSdlTextureSurface->format->BytesPerPixel : 0;
+        int texW = gSdlTextureSurface ? gSdlTextureSurface->w : 0;
+        int texH = gSdlTextureSurface ? gSdlTextureSurface->h : 0;
+
+        dbgLen = snprintf(dbgBuf, sizeof(dbgBuf),
+            "=== FALLOUT1-CE PSP DEBUG ===\n"
+            "gSdlTextureSurface: %dx%d bpp=%d fmt=0x%x\n"
+            "gSdlSurface: fmt=0x%x palette_colors=%d\n"
+            "SDL_GetError: %s\n"
+            "RENDERER=%p TEXTURE=%p\n",
+            texW, texH, texBpp, (unsigned)texFmt,
+            (unsigned)surFmt, (int)palCount,
+            SDL_GetError() ? SDL_GetError() : "(null)",
+            (void*)gSdlRenderer, (void*)gSdlTexture);
+
+        SceUID fd = sceIoOpen("ms0:/psp_debug.txt", PSP_O_WRONLY | PSP_O_CREAT, 0777);
+        if (fd >= 0) {
+            sceIoWrite(fd, dbgBuf, dbgLen);
+
+            // Also dump first 16 palette entries
+            if (gSdlSurface && gSdlSurface->format->palette) {
+                char palBuf[512];
+                int palOff = 0;
+                for (int i = 0; i < 16 && i < (int)gSdlSurface->format->palette->ncolors; i++) {
+                    SDL_Color* c = &gSdlSurface->format->palette->colors[i];
+                    palOff += snprintf(palBuf + palOff, sizeof(palBuf) - palOff,
+                        "pal[%2d] = R=%3d G=%3d B=%3d A=%3d\n",
+                        i, c->r, c->g, c->b, c->a);
                 }
+                sceIoWrite(fd, palBuf, palOff);
             }
 
-            // Draw a white border around the entire texture
-            for (int x = 0; x < tw; x++) {
-                writePixel(x, 0, 255, 255, 255);
-                writePixel(x, th-1, 255, 255, 255);
-            }
-            for (int y = 0; y < th; y++) {
-                writePixel(0, y, 255, 255, 255);
-                writePixel(tw-1, y, 255, 255, 255);
-            }
+            sceIoClose(fd);
+        }
 
-            // Also draw colored squares showing first 16 palette entries
-            if (gSdlSurface != NULL && gSdlSurface->format->palette != NULL) {
-                SDL_Palette* pal = gSdlSurface->format->palette;
-                for (int i = 0; i < 16 && i < (int)pal->ncolors; i++) {
-                    int px = tw - 80 + (i % 8) * 10;
-                    int py = 4 + (i / 8) * 10;
-                    for (int dy = 0; dy < 8 && py+dy < th; dy++) {
-                        for (int dx = 0; dx < 8 && px+dx < tw; dx++) {
-                            writePixel(px+dx, py+dy, pal->colors[i].r, pal->colors[i].g, pal->colors[i].b);
-                        }
-                    }
-                }
-            }
+        // --- On-screen text via pspDebugScreen (may be overwritten by SDL2) ---
+        // Already initted early in winmain.cc, so we just print.
+        pspDebugScreenPrintf("FALLOUT1-CE PSP v0.1\n");
+        pspDebugScreenPrintf("Tex: %dx%d bpp=%d fmt=0x%08x\n", texW, texH, texBpp, (unsigned)texFmt);
+        pspDebugScreenPrintf("Pal: %d entries\n", (int)palCount);
+        if (gSdlSurface && gSdlSurface->format->palette && palCount > 0) {
+            pspDebugScreenPrintf("pal[0]: R=%d G=%d B=%d\n",
+                gSdlSurface->format->palette->colors[0].r,
+                gSdlSurface->format->palette->colors[0].g,
+                gSdlSurface->format->palette->colors[0].b);
+            pspDebugScreenPrintf("pal[1]: R=%d G=%d B=%d\n",
+                gSdlSurface->format->palette->colors[1].r,
+                gSdlSurface->format->palette->colors[1].g,
+                gSdlSurface->format->palette->colors[1].b);
+        }
+    }
+#endif
 
-            // Log texture format info (will appear as pattern on screen)
-            // Write the format as colored bars at the bottom
-            char fmtStr[64];
-            snprintf(fmtStr, sizeof(fmtStr), "FMT:%dx%dbpp%d", tw, th, bpp);
-            for (size_t ci = 0; ci < strlen(fmtStr) && ci < 60; ci++) {
-                int px = 4 + ci * 8;
-                int py = th - 20;
-                Uint8 brightness = (Uint8)(fmtStr[ci] * 4);
-                for (int dy = 0; dy < 8 && py+dy < th; dy++) {
-                    for (int dx = 0; dx < 6 && px+dx < tw; dx++) {
-                        writePixel(px+dx, py+dy, brightness, brightness, 255-brightness);
-                    }
-                }
+    // Log return codes of SDL_UpdateTexture and SDL_RenderCopy for debugging
+    int updateResult = SDL_UpdateTexture(gSdlTexture, NULL, gSdlTextureSurface->pixels, gSdlTextureSurface->pitch);
+    SDL_RenderClear(gSdlRenderer);
+    int copyResult = SDL_RenderCopy(gSdlRenderer, gSdlTexture, NULL, NULL);
+    SDL_RenderPresent(gSdlRenderer);
+
+#ifdef __PSP__
+    // Log errors from SDL calls (one-shot after first frame to avoid spam)
+    static bool sdlErrorLogged = false;
+    if (!sdlErrorLogged && (updateResult != 0 || copyResult != 0)) {
+        sdlErrorLogged = true;
+        const char* err = SDL_GetError();
+        if (err && err[0]) {
+            SceUID fd = sceIoOpen("ms0:/psp_debug.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) {
+                char buf[256];
+                int len = snprintf(buf, sizeof(buf),
+                    "SDL error after frame1: update=%d copy=%d err='%s'\n",
+                    updateResult, copyResult, err);
+                sceIoWrite(fd, buf, len);
+                sceIoClose(fd);
             }
         }
     }
-
-    SDL_UpdateTexture(gSdlTexture, NULL, gSdlTextureSurface->pixels, gSdlTextureSurface->pitch);
-    SDL_RenderClear(gSdlRenderer);
-    SDL_RenderCopy(gSdlRenderer, gSdlTexture, NULL, NULL);
-    SDL_RenderPresent(gSdlRenderer);
+#endif
 }
 
 } // namespace fallout
