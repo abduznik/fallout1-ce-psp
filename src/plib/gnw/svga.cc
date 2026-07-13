@@ -44,6 +44,9 @@ SDL_Surface* gSdlSurface = NULL;
 SDL_Renderer* gSdlRenderer = NULL;
 SDL_Texture* gSdlTexture = NULL;
 SDL_Surface* gSdlTextureSurface = NULL;
+#ifdef __PSP__
+SDL_Surface* gSdlWindowSurface = NULL;
+#endif
 
 // TODO: Remove once migration to update-render cycle is completed.
 FpsLimiter sharedFpsLimiter;
@@ -91,7 +94,6 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
 {
     buf_to_buf(src + srcPitch * srcY + srcX, srcWidth, srcHeight, srcPitch, (unsigned char*)gSdlSurface->pixels + gSdlSurface->pitch * destY + destX, gSdlSurface->pitch);
 
-#ifndef __PSP__
     SDL_Rect srcRect;
     srcRect.x = destX;
     srcRect.y = destY;
@@ -102,7 +104,6 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
     destRect.x = destX;
     destRect.y = destY;
     SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
-#endif
 }
 
 bool svga_init(VideoOptions* video_options)
@@ -274,21 +275,35 @@ static bool createRenderer(int width, int height)
 #ifdef __PSP__
     // PSP: SDL2 renderer limits textures to 512x512 (hardware constraint of
     // the PSP's Media Engine GPU). Our 640x480 framebuffer exceeds this.
-    // Use surface-based rendering (SDL_GetWindowSurface + SDL_UpdateWindowSurface)
-    // instead of the renderer/texture pipeline.
-    CRLOG("  createRenderer: PSP path — using window surface\n");
+    // Two-step surface approach:
+    //   1. gSdlTextureSurface = 640x480 RGB565 intermediate for palette conversion
+    //   2. gSdlWindowSurface  = 480x272 RGB565 window surface (SDL_GetWindowSurface)
+    //   3. renderPresent: SDL_BlitScaled(gSdlTextureSurface → gSdlWindowSurface)
+    CRLOG("  createRenderer: PSP path — two-step surface\n");
     gSdlRenderer = NULL;
     gSdlTexture = NULL;
-    gSdlTextureSurface = SDL_GetWindowSurface(gSdlWindow);
-    if (gSdlTextureSurface == NULL) {
+    gSdlWindowSurface = SDL_GetWindowSurface(gSdlWindow);
+    if (gSdlWindowSurface == NULL) {
         CRLOG("  createRenderer: SDL_GetWindowSurface FAILED err=\"%s\"\n",
             SDL_GetError() ? SDL_GetError() : "(null)");
         goto cr_dump_fail;
     }
-    CRLOG("  createRenderer: SDL_GetWindowSurface OK fmt=0x%x w=%d h=%d bpp=%d\n",
+    CRLOG("  createRenderer: window surface fmt=0x%x w=%d h=%d bpp=%d\n",
+        (unsigned)gSdlWindowSurface->format->format,
+        gSdlWindowSurface->w, gSdlWindowSurface->h,
+        gSdlWindowSurface->format->BytesPerPixel);
+    // Create 640x480 RGB565 intermediate surface for palette conversion + blit target
+    gSdlTextureSurface = SDL_CreateRGBSurfaceWithFormat(0, width, height,
+        gSdlWindowSurface->format->BytesPerPixel * 8,
+        gSdlWindowSurface->format->format);
+    if (gSdlTextureSurface == NULL) {
+        CRLOG("  createRenderer: SDL_CreateRGBSurfaceWithFormat FAILED err=\"%s\"\n",
+            SDL_GetError() ? SDL_GetError() : "(null)");
+        goto cr_dump_fail;
+    }
+    CRLOG("  createRenderer: intermediate surface fmt=0x%x w=%d h=%d\n",
         (unsigned)gSdlTextureSurface->format->format,
-        gSdlTextureSurface->w, gSdlTextureSurface->h,
-        gSdlTextureSurface->format->BytesPerPixel);
+        gSdlTextureSurface->w, gSdlTextureSurface->h);
 #else
     // Non-PSP: standard renderer path
     CRLOG("  createRenderer: SDL_CreateRenderer...\n");
@@ -358,9 +373,13 @@ cr_dump_fail:
 static void destroyRenderer()
 {
 #ifdef __PSP__
-    // Window surface is owned by the window; SDL_DestroyWindow frees it.
-    // Don't free gSdlTextureSurface or destroy renderer/texture here.
-    gSdlTextureSurface = NULL;
+    // Free the intermediate surface we allocated, but NOT the window
+    // surface (SDL_DestroyWindow owns it).
+    if (gSdlTextureSurface != NULL) {
+        SDL_FreeSurface(gSdlTextureSurface);
+        gSdlTextureSurface = NULL;
+    }
+    gSdlWindowSurface = NULL;  // owned by window
     gSdlTexture = NULL;
     gSdlRenderer = NULL;
 #else
@@ -390,9 +409,11 @@ void handleWindowSizeChanged()
 void renderPresent()
 {
 #ifdef __PSP__
-    // Scale the 640x480 INDEX8 frame down to 480x272 RGB565 window surface,
-    // with SDL handling both palette conversion and bilinear scaling.
-    SDL_BlitScaled(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+    // Step 1: Scale the 640x480 RGB565 intermediate surface down to
+    // the 480x272 RGB565 window surface (SDL_BlitScaled handles
+    // same-format scaling without needing palette conversion).
+    SDL_BlitScaled(gSdlTextureSurface, NULL, gSdlWindowSurface, NULL);
+    // Step 2: Push the window surface to the display.
     SDL_UpdateWindowSurface(gSdlWindow);
 #else
     int updateResult = SDL_UpdateTexture(gSdlTexture, NULL, gSdlTextureSurface->pixels, gSdlTextureSurface->pitch);
