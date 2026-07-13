@@ -91,6 +91,7 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
 {
     buf_to_buf(src + srcPitch * srcY + srcX, srcWidth, srcHeight, srcPitch, (unsigned char*)gSdlSurface->pixels + gSdlSurface->pitch * destY + destX, gSdlSurface->pitch);
 
+#ifndef __PSP__
     SDL_Rect srcRect;
     srcRect.x = destX;
     srcRect.y = destY;
@@ -101,6 +102,7 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
     destRect.x = destX;
     destRect.y = destY;
     SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
+#endif
 }
 
 bool svga_init(VideoOptions* video_options)
@@ -388,6 +390,9 @@ void handleWindowSizeChanged()
 void renderPresent()
 {
 #ifdef __PSP__
+    // Scale the 640x480 INDEX8 frame down to 480x272 RGB565 window surface,
+    // with SDL handling both palette conversion and bilinear scaling.
+    SDL_BlitScaled(gSdlSurface, NULL, gSdlTextureSurface, NULL);
     SDL_UpdateWindowSurface(gSdlWindow);
 #else
     int updateResult = SDL_UpdateTexture(gSdlTexture, NULL, gSdlTextureSurface->pixels, gSdlTextureSurface->pitch);
