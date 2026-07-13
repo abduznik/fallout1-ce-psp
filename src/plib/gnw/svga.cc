@@ -140,6 +140,7 @@ static void psp_manual_scale(SDL_Surface* src, SDL_Surface* dst) {
             scale_diag_done = 1;
             char buf[4096];
             int pos = 0;
+            int dx_samples[] = {0, 120, 240, 360, 479};
             pos += snprintf(buf + pos, sizeof(buf) - pos,
                 "SCALE_DIAG: %dx%d -> %dx%d  stepX=0x%x(%d) stepY=0x%x(%d)\n"
                 "ratioX=%d/%d=%.4f ratioY=%d/%d=%.4f\n",
@@ -153,9 +154,7 @@ static void psp_manual_scale(SDL_Surface* src, SDL_Surface* dst) {
                 int srcY = (dy * stepY + (stepY >> 1)) >> 16;
                 if (srcY >= srcH) srcY = srcH - 1;
                 pos += snprintf(buf + pos, sizeof(buf) - pos, "  dy=%3d -> sy=%3d", dy, srcY);
-                // Also log a few X mappings for this row
                 // Log sample X mappings for this row
-                int dx_samples[] = {0, 120, 240, 360, 479};
                 pos += snprintf(buf + pos, sizeof(buf) - pos, "  sx[0,120,240,360,479]=");
                 for (int si = 0; si < 5; si++) {
                     int sx = dx_samples[si];
