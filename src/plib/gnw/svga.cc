@@ -231,7 +231,17 @@ void renderPresent()
     static bool dumpDone = false;
     if (!dumpDone) {
         dumpDone = true;
+#ifdef __PSP__
+        // Write to memory stick file (PSP filesystem)
         FILE* f = fopen("ms0:/PSP/GAME/FOUT00001/debug.txt", "w");
+#else
+        FILE* f = fopen("debug.txt", "w");
+#endif
+        if (f == NULL) {
+            // Fallback: write to stderr (PPSSPP captures this in log)
+            f = stderr;
+            fprintf(f, "=== DEBUG DUMP (stderr fallback) ===\n");
+        }
         if (f) {
             // Dump first 16 palette entries
             fprintf(f, "=== PALETTE (first 16 of 256) ===\n");
