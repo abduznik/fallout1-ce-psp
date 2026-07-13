@@ -320,6 +320,31 @@ static void movie_MVE_ShowFrame(SDL_Surface* surface, int srcWidth, int srcHeigh
 
     SDL_SetSurfacePalette(surface, gSdlSurface->format->palette);
 #ifdef __PSP__
+    // Diagnostic: clear margins around movie frame to test if mirrored
+    // duplicate comes from stale margin data surviving between frames.
+    {
+        int clearColor = 0;
+        Uint8* base = (Uint8*)gSdlSurface->pixels;
+        int p = gSdlSurface->pitch;
+        int fbW = gSdlSurface->w;  // 640
+        int fbH = gSdlSurface->h;  // 480
+        // Top margin (rows 0 to destRect.y-1)
+        for (int y = 0; y < destRect.y; y++) {
+            memset(base + y * p, clearColor, fbW);
+        }
+        // Bottom margin (rows destRect.y+copyH to fbH-1)
+        for (int y = destRect.y + srcRect.h; y < fbH; y++) {
+            memset(base + y * p, clearColor, fbW);
+        }
+        // Left/right margins within movie row range
+        for (int y = destRect.y; y < destRect.y + srcRect.h; y++) {
+            Uint8* rowBase = base + y * p;
+            // Left margin
+            memset(rowBase, clearColor, destRect.x);
+            // Right margin
+            memset(rowBase + destRect.x + srcRect.w, clearColor, fbW - destRect.x - srcRect.w);
+        }
+    }
     // Log movie frame rect for diagnostic tracing
     {
         char buf[256];
