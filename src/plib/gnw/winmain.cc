@@ -19,6 +19,8 @@
 #ifdef __PSP__
 #include <pspctrl.h>
 #include <pspdebug.h>
+#include <pspiofilemgr.h>
+#include <string.h>
 #endif
 
 namespace fallout {
