@@ -24,6 +24,8 @@
 
 #include "mouse.h"
 
+extern SDL_GameController* gameController;
+
 enum
 {
     CONTROLLER_DEADZONE = 3000,
