@@ -245,29 +245,44 @@ int screenGetHeight()
 
 static bool createRenderer(int width, int height)
 {
+    psp_debug_log("  createRenderer: SDL_CreateRenderer...\n");
     gSdlRenderer = SDL_CreateRenderer(gSdlWindow, -1, 0);
     if (gSdlRenderer == NULL) {
+        psp_debug_log("  createRenderer: SDL_CreateRenderer FAILED\n");
         return false;
     }
+    psp_debug_log("  createRenderer: SDL_CreateRenderer OK\n");
 
+    psp_debug_log("  createRenderer: SDL_RenderSetLogicalSize...\n");
     if (SDL_RenderSetLogicalSize(gSdlRenderer, width, height) != 0) {
+        psp_debug_log("  createRenderer: SDL_RenderSetLogicalSize FAILED\n");
         return false;
     }
+    psp_debug_log("  createRenderer: SDL_RenderSetLogicalSize OK\n");
 
+    psp_debug_log("  createRenderer: SDL_CreateTexture RGB888...\n");
     gSdlTexture = SDL_CreateTexture(gSdlRenderer, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STREAMING, width, height);
     if (gSdlTexture == NULL) {
+        psp_debug_log("  createRenderer: SDL_CreateTexture FAILED\n");
         return false;
     }
+    psp_debug_log("  createRenderer: SDL_CreateTexture OK\n");
 
+    psp_debug_log("  createRenderer: SDL_QueryTexture...\n");
     Uint32 format;
     if (SDL_QueryTexture(gSdlTexture, &format, NULL, NULL, NULL) != 0) {
+        psp_debug_log("  createRenderer: SDL_QueryTexture FAILED\n");
         return false;
     }
+    psp_debug_log("  createRenderer: SDL_QueryTexture OK\n");
 
+    psp_debug_log("  createRenderer: SDL_CreateRGBSurfaceWithFormat...\n");
     gSdlTextureSurface = SDL_CreateRGBSurfaceWithFormat(0, width, height, SDL_BITSPERPIXEL(format), format);
     if (gSdlTextureSurface == NULL) {
+        psp_debug_log("  createRenderer: SDL_CreateRGBSurfaceWithFormat FAILED\n");
         return false;
     }
+    psp_debug_log("  createRenderer: SDL_CreateRGBSurfaceWithFormat OK\n");
 
     return true;
 }
