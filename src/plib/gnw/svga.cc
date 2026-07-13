@@ -114,6 +114,116 @@ SDL_Texture* gSdlTexture = NULL;
 SDL_Surface* gSdlTextureSurface = NULL;
 #ifdef __PSP__
 SDL_Surface* gSdlWindowSurface = NULL;
+
+// Manual nearest-neighbor RGB565→RGB565 scaler with fixed-point accumulator.
+// Replaces SDL_BlitScaled on PSP because SDL_BlitScaled's rounding behavior is
+// opaque (pre-built library). Uses 16.16 fixed-point steps with center-offset
+// start to avoid skipped/repeated source rows.
+static void psp_manual_scale(SDL_Surface* src, SDL_Surface* dst) {
+    int srcW = src->w;
+    int srcH = src->h;
+    int dstW = dst->w;
+    int dstH = dst->h;
+    int srcPitchPx = src->pitch / 2;  // RGB565 = 2 bytes per pixel
+    int dstPitchPx = dst->pitch / 2;
+    Uint16* srcPx = (Uint16*)src->pixels;
+    Uint16* dstPx = (Uint16*)dst->pixels;
+
+    // Fixed-point steps (16.16 format)
+    int stepX = (srcW << 16) / dstW;
+    int stepY = (srcH << 16) / dstH;
+
+    // One-shot diagnostic: log the mapping for all dest rows (Step 2 evidence)
+    {
+        static int scale_diag_done = 0;
+        if (!scale_diag_done) {
+            scale_diag_done = 1;
+            char buf[4096];
+            int pos = 0;
+            pos += snprintf(buf + pos, sizeof(buf) - pos,
+                "SCALE_DIAG: %dx%d -> %dx%d  stepX=0x%x(%d) stepY=0x%x(%d)\n"
+                "ratioX=%d/%d=%.4f ratioY=%d/%d=%.4f\n",
+                srcW, srcH, dstW, dstH,
+                stepX, stepX, stepY, stepY,
+                dstW, srcW, (double)dstW / srcW,
+                dstH, srcH, (double)dstH / srcH);
+            // Log first 20 and last 20 dest→src mappings
+            pos += snprintf(buf + pos, sizeof(buf) - pos, "DST->SRC mapping (first 20 rows):\n");
+            for (int dy = 0; dy < 20 && dy < dstH; dy++) {
+                int srcY = (dy * stepY + (stepY >> 1)) >> 16;
+                if (srcY >= srcH) srcY = srcH - 1;
+                pos += snprintf(buf + pos, sizeof(buf) - pos, "  dy=%3d -> sy=%3d", dy, srcY);
+                // Also log a few X mappings for this row
+                // Log sample X mappings for this row
+                int dx_samples[] = {0, 120, 240, 360, 479};
+                pos += snprintf(buf + pos, sizeof(buf) - pos, "  sx[0,120,240,360,479]=");
+                for (int si = 0; si < 5; si++) {
+                    int sx = dx_samples[si];
+                    int srcX = (sx * stepX + (stepX >> 1)) >> 16;
+                    if (srcX >= srcW) srcX = srcW - 1;
+                    pos += snprintf(buf + pos, sizeof(buf) - pos, "%d ", srcX);
+                }
+                pos += snprintf(buf + pos, sizeof(buf) - pos, "\n");
+            }
+            if (dstH > 40) {
+                pos += snprintf(buf + pos, sizeof(buf) - pos, "  ...\nDST->SRC mapping (last 20 rows):\n");
+                for (int dy = dstH - 20; dy < dstH; dy++) {
+                    int srcY = (dy * stepY + (stepY >> 1)) >> 16;
+                    if (srcY >= srcH) srcY = srcH - 1;
+                    pos += snprintf(buf + pos, sizeof(buf) - pos, "  dy=%3d -> sy=%3d", dy, srcY);
+                    pos += snprintf(buf + pos, sizeof(buf) - pos, "  sx[0,120,240,360,479]=");
+                    for (int si = 0; si < 5; si++) {
+                        int sx = dx_samples[si];
+                        int srcX = (sx * stepX + (stepX >> 1)) >> 16;
+                        if (srcX >= srcW) srcX = srcW - 1;
+                        pos += snprintf(buf + pos, sizeof(buf) - pos, "%d ", srcX);
+                    }
+                    pos += snprintf(buf + pos, sizeof(buf) - pos, "\n");
+                }
+            }
+            // Summary: count how many src rows are mapped at least once vs skipped
+            {
+                int mapped[480] = {0};
+                for (int dy = 0; dy < dstH; dy++) {
+                    int srcY = (dy * stepY + (stepY >> 1)) >> 16;
+                    if (srcY >= 0 && srcY < srcH) mapped[srcY] = 1;
+                }
+                int mappedCount = 0, skippedCount = 0;
+                for (int sy = 0; sy < srcH; sy++) {
+                    if (mapped[sy]) mappedCount++;
+                    else skippedCount++;
+                }
+                pos += snprintf(buf + pos, sizeof(buf) - pos,
+                    "SCALE_SUMMARY: src=%d dst=%d  mapped=%d skipped=%d  (%.1f%% coverage)\n",
+                    srcH, dstH, mappedCount, skippedCount,
+                    100.0 * mappedCount / srcH);
+            }
+            SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+                PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) {
+                sceIoWrite(fd, buf, strlen(buf));
+                sceIoClose(fd);
+            }
+        }
+    }
+
+    // Center-offset accumulators for nearest-neighbor sampling
+    int accY = stepY >> 1;
+    for (int dy = 0; dy < dstH; dy++) {
+        int srcY = accY >> 16;
+        if (srcY >= srcH) srcY = srcH - 1;
+        accY += stepY;
+
+        Uint16* srcRow = srcPx + srcY * srcPitchPx;
+        int accX = stepX >> 1;
+        for (int dx = 0; dx < dstW; dx++) {
+            int srcX = accX >> 16;
+            if (srcX >= srcW) srcX = srcW - 1;
+            accX += stepX;
+            dstPx[dy * dstPitchPx + dx] = srcRow[srcX];
+        }
+    }
+}
 #endif
 
 // TODO: Remove once migration to update-render cycle is completed.
@@ -498,9 +608,8 @@ void renderPresent()
     }
 
     // Step 1: Scale the 640x480 RGB565 intermediate surface down to
-    // the 480x272 RGB565 window surface (SDL_BlitScaled handles
-    // same-format scaling without needing palette conversion).
-    SDL_BlitScaled(gSdlTextureSurface, NULL, gSdlWindowSurface, NULL);
+    // the 480x272 RGB565 window surface using manual fixed-point scaler.
+    psp_manual_scale(gSdlTextureSurface, gSdlWindowSurface);
     // Step 2: Push the window surface to the display.
     SDL_UpdateWindowSurface(gSdlWindow);
 #else
