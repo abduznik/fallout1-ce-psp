@@ -262,6 +262,8 @@ void GNW95_SetPaletteEntries(unsigned char* palette, int start, int count)
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, start, count);
         if (!gIsMoviePlaying) {
             psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
+        } else {
+            psp_debug_log("PALETTE_SKIP: gIsMoviePlaying=true, skipped full conversion\n");
         }
     }
 }
@@ -282,6 +284,8 @@ void GNW95_SetPalette(unsigned char* palette)
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, 0, 256);
         if (!gIsMoviePlaying) {
             psp_convert_index8_to_rgb565(gSdlSurface, NULL, gSdlTextureSurface, 0, 0);
+        } else {
+            psp_debug_log("PALETTE_SKIP: GNW95_SetPalette gIsMoviePlaying=true, skipped full conversion\n");
         }
     }
 }

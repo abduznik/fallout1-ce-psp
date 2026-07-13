@@ -566,6 +566,14 @@ static void cleanupMovie(int a1)
 
 #ifdef __PSP__
     gIsMoviePlaying = false;
+    {
+        SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+            PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+        if (fd >= 0) {
+            sceIoWrite(fd, "MOVIE_CLEANUP: gIsMoviePlaying=false\n", 39);
+            sceIoClose(fd);
+        }
+    }
 #endif
     running = 0;
     movieSubRectFlag = 0;
@@ -838,6 +846,14 @@ static int movieStart(int win, char* filePath, int (*a3)())
     running = 1;
 #ifdef __PSP__
     gIsMoviePlaying = true;
+    {
+        SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+            PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+        if (fd >= 0) {
+            sceIoWrite(fd, "MOVIE_START: gIsMoviePlaying=true\n", 36);
+            sceIoClose(fd);
+        }
+    }
 #endif
     movieFlags &= ~MOVIE_EXTENDED_FLAG_0x01;
 
