@@ -15,6 +15,21 @@
 
 namespace fallout {
 
+// Debug helper for PSP: appends a message to the debug file.
+// Only active on PSP builds.
+#ifdef __PSP__
+static void psp_debug_log(const char* msg) {
+    SceUID fd = sceIoOpen("ms0:/psp_debug.txt",
+        PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+    if (fd >= 0) {
+        sceIoWrite(fd, msg, strlen(msg));
+        sceIoClose(fd);
+    }
+}
+#else
+#define psp_debug_log(msg) ((void)0)
+#endif
+
 static bool createRenderer(int width, int height);
 static void destroyRenderer();
 
@@ -90,11 +105,15 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
 
 bool svga_init(VideoOptions* video_options)
 {
+    psp_debug_log("svga_init: SDL_SetHint...\n");
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
 
+    psp_debug_log("svga_init: SDL_InitSubSystem...\n");
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
+        psp_debug_log("svga_init: SDL_InitSubSystem FAILED\n");
         return false;
     }
+    psp_debug_log("svga_init: SDL_InitSubSystem OK\n");
 
     Uint32 windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI;
 
@@ -102,23 +121,30 @@ bool svga_init(VideoOptions* video_options)
         windowFlags |= SDL_WINDOW_FULLSCREEN;
     }
 
+    psp_debug_log("svga_init: SDL_CreateWindow...\n");
     gSdlWindow = SDL_CreateWindow(GNW95_title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
         video_options->width * video_options->scale,
         video_options->height * video_options->scale,
         windowFlags);
     if (gSdlWindow == NULL) {
+        psp_debug_log("svga_init: SDL_CreateWindow FAILED\n");
         return false;
     }
+    psp_debug_log("svga_init: SDL_CreateWindow OK\n");
 
+    psp_debug_log("svga_init: createRenderer...\n");
     if (!createRenderer(video_options->width, video_options->height)) {
         destroyRenderer();
 
         SDL_DestroyWindow(gSdlWindow);
         gSdlWindow = NULL;
 
+        psp_debug_log("svga_init: createRenderer FAILED\n");
         return false;
     }
+    psp_debug_log("svga_init: createRenderer OK\n");
 
+    psp_debug_log("svga_init: SDL_CreateRGBSurface 8-bit...\n");
     gSdlSurface = SDL_CreateRGBSurface(0,
         video_options->width,
         video_options->height,
@@ -132,7 +158,12 @@ bool svga_init(VideoOptions* video_options)
 
         SDL_DestroyWindow(gSdlWindow);
         gSdlWindow = NULL;
+
+        psp_debug_log("svga_init: SDL_CreateRGBSurface FAILED\n");
     }
+    psp_debug_log("svga_init: 8-bit surface OK\n");
+
+    // ... (rest unchanged)
 
     SDL_Color colors[256];
     for (int index = 0; index < 256; index++) {
