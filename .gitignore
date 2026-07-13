@@ -391,3 +391,9 @@ FodyWeavers.xsd
 # CMake
 /out
 /build
+
+# PSP game data (original Fallout 1 assets, not committed)
+/game_data/
+
+# PSP build artifacts (local testing)
+*.pbp
