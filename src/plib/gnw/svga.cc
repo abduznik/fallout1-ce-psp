@@ -245,46 +245,86 @@ int screenGetHeight()
 
 static bool createRenderer(int width, int height)
 {
-    psp_debug_log("  createRenderer: SDL_CreateRenderer...\n");
+#ifdef __PSP__
+    // In-memory buffer for logging inside createRenderer.
+    // PSP's file I/O (sceIoOpen/sceIoWrite) can fail silently after SDL
+    // touches graphics hardware, so we buffer everything and dump once.
+    static char crBuf[2048];
+    int crPos = 0;
+#define CRLOG(fmt, ...) do { \
+    int n = snprintf(crBuf + crPos, sizeof(crBuf) - crPos - 1, fmt, ##__VA_ARGS__); \
+    if (n > 0) crPos += n < (int)(sizeof(crBuf) - crPos) ? n : (int)(sizeof(crBuf) - crPos - 1); \
+} while(0)
+#else
+#define CRLOG(fmt, ...) ((void)0)
+#endif
+
+    CRLOG("  createRenderer: enter\n");
+    const char* errBefore = SDL_GetError();
+    CRLOG("  createRenderer: SDL_GetError before=\"%s\"\n", errBefore ? errBefore : "(null)");
+
+    CRLOG("  createRenderer: SDL_CreateRenderer...\n");
     gSdlRenderer = SDL_CreateRenderer(gSdlWindow, -1, 0);
     if (gSdlRenderer == NULL) {
-        psp_debug_log("  createRenderer: SDL_CreateRenderer FAILED\n");
-        return false;
+        CRLOG("  createRenderer: SDL_CreateRenderer FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        goto cr_dump_fail;
     }
-    psp_debug_log("  createRenderer: SDL_CreateRenderer OK\n");
+    CRLOG("  createRenderer: SDL_CreateRenderer OK\n");
 
-    psp_debug_log("  createRenderer: SDL_RenderSetLogicalSize...\n");
+    CRLOG("  createRenderer: SDL_RenderSetLogicalSize...\n");
     if (SDL_RenderSetLogicalSize(gSdlRenderer, width, height) != 0) {
-        psp_debug_log("  createRenderer: SDL_RenderSetLogicalSize FAILED\n");
-        return false;
+        CRLOG("  createRenderer: SDL_RenderSetLogicalSize FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        goto cr_dump_fail;
     }
-    psp_debug_log("  createRenderer: SDL_RenderSetLogicalSize OK\n");
+    CRLOG("  createRenderer: SDL_RenderSetLogicalSize OK\n");
 
-    psp_debug_log("  createRenderer: SDL_CreateTexture RGB888...\n");
+    CRLOG("  createRenderer: SDL_CreateTexture RGB888...\n");
     gSdlTexture = SDL_CreateTexture(gSdlRenderer, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STREAMING, width, height);
     if (gSdlTexture == NULL) {
-        psp_debug_log("  createRenderer: SDL_CreateTexture FAILED\n");
-        return false;
+        CRLOG("  createRenderer: SDL_CreateTexture FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        goto cr_dump_fail;
     }
-    psp_debug_log("  createRenderer: SDL_CreateTexture OK\n");
+    CRLOG("  createRenderer: SDL_CreateTexture OK\n");
 
-    psp_debug_log("  createRenderer: SDL_QueryTexture...\n");
+    CRLOG("  createRenderer: SDL_QueryTexture...\n");
     Uint32 format;
     if (SDL_QueryTexture(gSdlTexture, &format, NULL, NULL, NULL) != 0) {
-        psp_debug_log("  createRenderer: SDL_QueryTexture FAILED\n");
-        return false;
+        CRLOG("  createRenderer: SDL_QueryTexture FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        goto cr_dump_fail;
     }
-    psp_debug_log("  createRenderer: SDL_QueryTexture OK\n");
+    CRLOG("  createRenderer: SDL_QueryTexture OK format=0x%x\n", (unsigned)format);
 
-    psp_debug_log("  createRenderer: SDL_CreateRGBSurfaceWithFormat...\n");
+    CRLOG("  createRenderer: SDL_CreateRGBSurfaceWithFormat...\n");
     gSdlTextureSurface = SDL_CreateRGBSurfaceWithFormat(0, width, height, SDL_BITSPERPIXEL(format), format);
     if (gSdlTextureSurface == NULL) {
-        psp_debug_log("  createRenderer: SDL_CreateRGBSurfaceWithFormat FAILED\n");
-        return false;
+        CRLOG("  createRenderer: SDL_CreateRGBSurfaceWithFormat FAILED err=\"%s\"\n", SDL_GetError() ? SDL_GetError() : "(null)");
+        goto cr_dump_fail;
     }
-    psp_debug_log("  createRenderer: SDL_CreateRGBSurfaceWithFormat OK\n");
+    CRLOG("  createRenderer: SDL_CreateRGBSurfaceWithFormat OK\n");
 
+#ifdef __PSP__
+    {
+        SceUID fd = sceIoOpen("ms0:/create_renderer_debug.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
+        if (fd >= 0) {
+            sceIoWrite(fd, crBuf, strlen(crBuf));
+            sceIoClose(fd);
+        }
+    }
+#endif
     return true;
+
+cr_dump_fail:
+#ifdef __PSP__
+    {
+        SceUID fd = sceIoOpen("ms0:/create_renderer_debug.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
+        if (fd >= 0) {
+            sceIoWrite(fd, crBuf, strlen(crBuf));
+            sceIoClose(fd);
+        }
+    }
+#endif
+    return false;
+#undef CRLOG
 }
 
 static void destroyRenderer()
