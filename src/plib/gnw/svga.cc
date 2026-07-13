@@ -103,6 +103,19 @@ void GNW95_SetPaletteEntries(unsigned char* palette, int start, int count)
                 sceIoClose(fd);
             }
         }
+        // Dump sample pixels from intermediate surface after full blit
+        {
+            SceUID fd = sceIoOpen("ms0:/palette_log.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) {
+                char buf[512];
+                Uint16* px = (Uint16*)gSdlTextureSurface->pixels;
+                int n = snprintf(buf, sizeof(buf),
+                    "  postBlit px[0]=0x%04x px[320]=0x%04x px[639]=0x%04x\n",
+                    px[0], px[320], px[639]);
+                sceIoWrite(fd, buf, n);
+                sceIoClose(fd);
+            }
+        }
 #endif
     }
 }
@@ -141,21 +154,25 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
     destRect.y = destY;
     int showBlitRet = SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
 #ifdef __PSP__
-    if (showBlitRet != 0) {
-        SceUID fd = sceIoOpen("ms0:/showrect_error.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
-        if (fd >= 0) {
-            char buf[512];
-            int n = snprintf(buf, sizeof(buf),
-                "GNW95_ShowRect: SDL_BlitSurface ret=%d err=\"%s\"\n"
-                "  srcRect(%d,%d %dx%d) dest(%d,%d)\n"
-                "  src: w=%d h=%d pitch=%d fmt=0x%x\n"
-                "  dst: w=%d h=%d pitch=%d fmt=0x%x\n",
-                showBlitRet, SDL_GetError() ? SDL_GetError() : "(null)",
-                srcRect.x, srcRect.y, srcRect.w, srcRect.h, destRect.x, destRect.y,
-                gSdlSurface->w, gSdlSurface->h, gSdlSurface->pitch, gSdlSurface->format->format,
-                gSdlTextureSurface->w, gSdlTextureSurface->h, gSdlTextureSurface->pitch, gSdlTextureSurface->format->format);
-            sceIoWrite(fd, buf, n);
-            sceIoClose(fd);
+    {
+        static int rectCount = 0;
+        if (rectCount < 20) {
+            SceUID fd = sceIoOpen("ms0:/showrect_log.txt", PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+            if (fd >= 0) {
+                char buf[512];
+                int n = snprintf(buf, sizeof(buf),
+                    "ShowRect[%d] blitRet=%d err=\"%s\"\n"
+                    "  srcRect(%d,%d %dx%d) dest(%d,%d)\n"
+                    "  src: fmt=0x%x pitch=%d pal=%p\n"
+                    "  dst: fmt=0x%x pitch=%d\n",
+                    rectCount, showBlitRet, SDL_GetError() ? SDL_GetError() : "(null)",
+                    srcRect.x, srcRect.y, srcRect.w, srcRect.h, destRect.x, destRect.y,
+                    gSdlSurface->format->format, gSdlSurface->pitch, (void*)gSdlSurface->format->palette,
+                    gSdlTextureSurface->format->format, gSdlTextureSurface->pitch);
+                sceIoWrite(fd, buf, n);
+                sceIoClose(fd);
+                rectCount++;
+            }
         }
     }
 #endif
