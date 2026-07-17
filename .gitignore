@@ -397,6 +397,7 @@ FodyWeavers.xsd
 
 # PSP build artifacts (local testing)
 *.pbp
+!EBOOT.PBP
 
 # Smoke test screenshots
 /smoke-test-screenshots/
