@@ -80,6 +80,32 @@ $ mv app /Applications/Fallout
 
 - Use Finder (macOS Catalina and later) or iTunes (Windows and macOS Mojave or earlier) to copy `master.dat`, `critter.dat`, and `data` folder to "Fallout" app ([how-to](https://support.apple.com/HT210598)). Watch for file names - keep (or make) them lowercased (see [Configuration](#configuration)).
 
+### PSP
+
+> **NOTE**: This is an experimental port. Input is not yet wired up — you can verify rendering but cannot interact with the game.
+
+- Use Windows installation as a base - it contains data assets needed to play. Copy `Fallout` folder somewhere.
+
+- Download `EBOOT.PBP` from the [latest release](https://github.com/abduznik/fallout1-ce-psp/releases) or build from source.
+
+- Connect your PSP via USB (or use a Memory Stick card reader). Create the folder `PSP/GAME/FOUT00002/` on the Memory Stick root.
+
+- Copy `EBOOT.PBP`, `MASTER.DAT`, `CRITTER.DAT`, and the `data` folder into `PSP/GAME/FOUT00002/`.
+
+- Disconnect the PSP. On the XMB, navigate to **Game → Memory Stick** and launch **Fallout CE**.
+
+- Debug logs are written to `psp_debug.txt` on the Memory Stick root.
+
+### Screenshots
+
+| Inventory | Character Sheet |
+|-----------|-----------------|
+| ![Inventory](image1_inventory.jpg) | ![Character Sheet](image2_character_sheet.jpg) |
+
+| Cutscene | Gameplay |
+|----------|----------|
+| ![Cutscene](image3_cutscene.jpg) | ![Gameplay](image4_gameplay.jpg) |
+
 ## Configuration
 
 The main configuration file is `fallout.cfg`. There are several important settings you might need to adjust for your installation. Depending on your Fallout distribution main game assets `master.dat`, `critter.dat`, and `data` folder might be either all lowercased, or all uppercased. You can either update `master_dat`, `critter_dat`, `master_patches` and `critter_patches` settings to match your file names, or rename files to match entries in your `fallout.cfg`.
