@@ -2,7 +2,13 @@
 
 A PSP port of [Fallout Community Edition](https://github.com/alexbatalov/fallout1-ce), a from-scratch reimplementation of Fallout 1.
 
-> **NOTE**: This is an experimental port. Input is not yet wired up — you can verify rendering but cannot interact with the game.
+## Status
+
+The game is fully playable. Current known issues:
+
+- Cutscenes and some static images have broken textures (misplaced or partially cut off)
+- FPS averages 10-20
+- Performance is limited by disc speed and RAM — heavier areas may cause slowdowns or crashes
 
 ## Installation
 
